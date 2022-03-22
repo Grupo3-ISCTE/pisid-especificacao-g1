@@ -199,7 +199,7 @@ public class PrimeiroJava {
     }
 
     public static void main(String[] args) throws IOException, SQLException, MqttException{
-        PrimeiroJava primeiroJava = new PrimeiroJava(new Ini(new File("src/main/java/org/iscte/pt/config.ini")));
+        PrimeiroJava primeiroJava = new PrimeiroJava(new Ini(new File("src/main/java/org/pt/iscte/config.ini")));
 
         primeiroJava.connectFromMongo();
         primeiroJava.connectToMongo();
