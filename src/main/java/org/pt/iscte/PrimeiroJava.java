@@ -74,6 +74,7 @@ public class PrimeiroJava {
     /**
      * * Transferência de dados do MongoDB da Cloud para o MongoDB Local
      * TODO: necessário perceber se todos os dados da cloud estão a ser recebidos
+     * TODO: necessário perceber se a remoção de duplicados está a ser bem feita
      * 
      */
     public void mongoToMongo() {
@@ -181,13 +182,16 @@ public class PrimeiroJava {
      * 
      * TODO: necessário fazer método de remoção de OUTLIERS
      * TODO: necessário fazer a gestão de anómalos
+     * TODO: guardar ultimo registo enviado para o MySQL para comparar com o ciclo
+     * TODO: seguinte e assim remover mais duplicados (novo método)
+     * TODO: comentar métodos da Thread
      * 
      * ? Quantos registos são de cada vez? 5 segundos? 10 registos?
      * ? O que é que vai ser feito primeiro?
-     * ? Será que é aqui que se faz a remoção dos anómalos?
+     * ? É aqui ou no segundo java que se remove os anómalos?
+     * ! implementado no segundo neste momento
      * ? Nas queries envia-se tudo de uma vez ou um registo de cada vez?
      * ! Neste momento está uma de cada vez
-     * 
      */
     public void mQTTToMySQL() {
         new Thread() {
@@ -202,7 +206,7 @@ public class PrimeiroJava {
                             medicoesGuardadas.add(new Medicao(stringToDocument(msg)));
                         else {
                             removeDuplicates();
-                            // removeOutliers();
+                            removeOutliers();
                             criarEMandarQueries();
                             medicoesGuardadas.clear();
                             sleep(Integer.parseInt(ini.get("Mysql Destination", "delay")));
@@ -221,34 +225,35 @@ public class PrimeiroJava {
             public Document stringToDocument(MqttMessage msg) {
                 String mensagem = new String(msg.getPayload()).split("Document")[1].replace("=", "\":\"").replace(", ",
                         "\",\"");
+                mensagem = mensagem.substring(1, mensagem.length() - 1).replace("}", "\"}").replace("{", "{\"");
                 System.out.println("MQTT received message: " + mensagem);
-                return Document
-                        .parse(mensagem.substring(1, mensagem.length() - 1).replace("}", "\"}").replace("{", "{\""));
+                return Document.parse(mensagem);
             }
 
-            // public void removeOutliers(){
             // FALTA ORDENAR OS OUTLIERS PARA SABER BEM Q1 e Q3
             // ESTA MAL EXPLICADO PQ TEMOS DE AGRUPAR POR SENSOR e ZONA
-            // List<Medicao> semOutliers = new ArrayList<>();
-            // double q1 = medicoesGuardadas.get(medicoesGuardadas.size()/4).leitura;
-            // double q3 = medicoesGuardadas.get(3 * medicoesGuardadas.size()/4).leitura;
-            // double iqr = q3 - q1;
-            // for(Medicao m: medicoesGuardadas){
-            // double val = m.leitura;
-            // if(val >= q1 - iqr - 1 && val <= q3 + iqr + 1){
-            // semOutliers.add(m);
-            // }
-            // }
-            // medicoesGuardadas = semOutliers;
-            // }
+            public void removeOutliers() {
+                // List<Medicao> semOutliers = new ArrayList<>();
+                // double q1 = medicoesGuardadas.get(medicoesGuardadas.size()/4).leitura;
+                // double q3 = medicoesGuardadas.get(3 * medicoesGuardadas.size()/4).leitura;
+                // double iqr = q3 - q1;
+                // for(Medicao m: medicoesGuardadas){
+                // double val = m.leitura;
+                // if(val >= q1 - iqr - 1 && val <= q3 + iqr + 1){
+                // semOutliers.add(m);
+                // }
+                // }
+                // medicoesGuardadas = semOutliers;
+            }
 
             public void removeDuplicates() {
                 List<Medicao> semDuplicados = new ArrayList<>();
                 semDuplicados.add(medicoesGuardadas.get(0));
                 for (Medicao m : medicoesGuardadas) {
                     for (int i = 0; i < semDuplicados.size(); i++) {
-                        if (semDuplicados.get(i).iDSensor != m.iDSensor || semDuplicados.get(i).iDZona != m.iDZona
-                                || semDuplicados.get(i).leitura != m.leitura) {
+                        if (semDuplicados.get(i).getIDSensor() != m.getIDSensor()
+                                || semDuplicados.get(i).getIDZona() != m.getIDZona()
+                                || semDuplicados.get(i).getLeitura() != m.getLeitura()) {
                             semDuplicados.add(m);
                         }
                     }
@@ -259,7 +264,8 @@ public class PrimeiroJava {
             public void criarEMandarQueries() throws SQLException {
                 for (Medicao m : medicoesGuardadas) {
                     String query = "INSERT INTO " + sql_table_to + "(IDSensor, IDZona, Hora, Leitura) VALUES("
-                            + m.iDSensor + ", " + m.iDZona + ", '" + m.hora + "', " + m.leitura + ")";
+                            + m.getIDSensor() + ", " + m.getIDZona() + ", '" + m.getHora() + "', " + m.getLeitura()
+                            + ")";
                     sql_connection_to.prepareStatement(query).execute();
                     System.out.println("MySQL query: " + query);
                 }

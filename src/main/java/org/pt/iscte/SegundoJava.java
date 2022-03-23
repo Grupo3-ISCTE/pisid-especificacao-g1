@@ -7,6 +7,8 @@ import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.List;
 
 import org.ini4j.Ini;
 import org.ini4j.InvalidFileFormatException;
@@ -17,68 +19,108 @@ public class SegundoJava {
   private Connection sql_connection_from;
   private String sql_table_to;
 
-  public SegundoJava(Ini ini) throws SQLException {
-    // Leitura das medicoes inseridas na tabela Medicoes
-    // Criar novo registo na tabela ErroSensor quando necessário tendo em conta a
-    // tabela Sensor
-    // Remocao de valores fora dos limites definidos na tabela Sensor
-    // Criar novo registo na tabela Alerta quando necessario tendo em conta a tabela
-    // ParametroCultura
-
+  public SegundoJava(Ini ini) {
     this.ini = ini;
+  }
+
+  // Leitura das medicoes inseridas na tabela Medicoes
+  // Criar novo registo na tabela ErroSensor quando necessário tendo em conta a
+  // tabela Sensor
+  // Remocao de valores fora dos limites definidos na tabela Sensor
+  // Criar novo registo na tabela Alerta quando necessario tendo em conta a tabela
+  // ParametroCultura
+  public void init() throws SQLException {
+    // connectToMySql();
     connectFromMySql();
-    connectToMySql();
+
     new Thread(() -> {
       try {
-        lerTabelaMedicao();
+        // lerTabelaMedicao();
         verificarTabelaSensor();
-        criarRegistoErroSensor();
-        removerRegistoMedicao();
-        lerTabelaParametroCultura();
-        enviarAlertas();
-        sql_connection_from.close();
+        // criarRegistoErroSensor();
+        // removerRegistoMedicao();
+        // lerTabelaParametroCultura();
+        // criarRegistoAlerta();
       } catch (SQLException e) {
-        // TODO Auto-generated catch block
+        try {
+          sql_connection_from.close();
+        } catch (SQLException e1) {
+          e1.printStackTrace();
+        }
         e.printStackTrace();
       }
     }).start();
   }
 
-  public void connectFromMySql() throws SQLException {
-    String connection_link = ini.get("Mysql Origin", "sql_database_connection_from");
-    String user = ini.get("Mysql Origin", "sql_database_user_from");
-    String password = ini.get("Mysql Origin", "sql_database_password_from");
-    sql_connection_from = DriverManager.getConnection(connection_link, user, password);
-  }
-
+  /**
+   * * Conecção ao MySQL Local para posterior análise, remoção e inserção
+   * TODO: Necessário criar credenciais de acesso
+   * 
+   * @throws SQLException
+   */
   public void connectToMySql() throws SQLException {
+    System.out.println("Connecting to Local MySQL Database");
     sql_table_to = ini.get("Mysql Destination", "sql_table_to");
     Connection sql_connection_to = DriverManager.getConnection(
         ini.get("Mysql Destination", "sql_database_connection_to"),
         ini.get("Mysql Destination", "sql_database_user_to"), ini.get("Mysql Destination", "sql_database_password_to"));
+    System.out.println("Connected to Local MySQL Database");
   }
 
+  /**
+   * * Conecção ao MySQL da Cloud para posterior análise da tabela Sensor
+   * ? Para que vai ser utilizada a tabela Zona?
+   * 
+   * @throws SQLException
+   */
+  public void connectFromMySql() throws SQLException {
+    System.out.println("Connecting to External MySQL Database");
+    String connection_link = ini.get("Mysql Origin", "sql_database_connection_from");
+    String user = ini.get("Mysql Origin", "sql_database_user_from");
+    String password = ini.get("Mysql Origin", "sql_database_password_from");
+    sql_connection_from = DriverManager.getConnection(connection_link, user, password);
+    System.out.println("Connected to External MySQL Database");
+  }
+
+  /**
+   * * Leitura das medições presentes na tabela Medicao para posterior análise de
+   * * valores anómalos
+   * TODO: Falta guardar registos numa lista
+   * 
+   * @throws SQLException
+   */
   public void lerTabelaMedicao() throws SQLException {
     Statement statement = sql_connection_from.createStatement();
     ResultSet resultSet = statement.executeQuery(sql_table_to);
-
   }
 
+  /**
+   * TODO: Ainda nao sabemos se isto é para fazer antes ou depois da inserção de
+   * TODO: medicoes
+   * 
+   * @throws SQLException
+   */
   public void verificarTabelaSensor() throws SQLException {
     Statement statement = sql_connection_from.createStatement();
     ResultSet resultSet = statement.executeQuery(ini.get("Mysql Origin", "sql_select_from_table"));
+    List<Sensor> sensorList = new ArrayList<>();
 
-    while (resultSet.next()) {
-      System.out.println("idsensor: " + resultSet.getInt(1) + " tipo: " + resultSet.getString(2) + " limiteinferior: "
-          + resultSet.getBigDecimal(3) + " limitesuperior: " + resultSet.getBigDecimal(4) + " idzona: "
-          + resultSet.getInt(5));
-    }
+    while (resultSet.next())
+      sensorList.add(new Sensor(resultSet));
   }
 
+  /**
+   * TODO: Ainda nao sabemos se isto é para fazer antes ou depois da inserção de
+   * TODO: medicoes
+   */
   public void criarRegistoErroSensor() {
 
   }
 
+  /**
+   * TODO: Ainda nao sabemos se isto é para fazer antes ou depois da inserção de
+   * TODO: medicoes
+   */
   public void removerRegistoMedicao() {
 
   }
@@ -87,12 +129,16 @@ public class SegundoJava {
 
   }
 
-  public void enviarAlertas() {
+  /**
+   * ? Como saber se o registo que vamos analisar já nao foi analizado
+   */
+  public void criarRegistoAlerta() {
 
   }
 
   public static void main(String[] args) throws InvalidFileFormatException, IOException, SQLException {
-    Ini ini = new Ini();
-    SegundoJava segundojava = new SegundoJava(new Ini(new File("src/main/java/org/iscte/pt/config.ini")));
+    Ini ini = new Ini(new File("src/main/java/org/pt/iscte/config.ini"));
+    SegundoJava segundojava = new SegundoJava(ini);
+    segundojava.init();
   }
 }
