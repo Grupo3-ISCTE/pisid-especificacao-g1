@@ -1,8 +1,3 @@
-- Não existe nome para a base de dados MySQL (assumi estufa)
-- É dito que o segundo Java lê a tabela de medições e depois remove os valores fora dos limites da tabel Sensor mas depois é dito que essa verificação é feita antes de se inserir na tabela de medições.
 - Pelo que percebi antes de enviar para o MySQL temos que verificar se os valores a inserir vão ser iguais aos já inseridos na tabela medicao? ("enviam-se apenas medições quando os valores associados a estas forem diferentes aos valores anteriormente registados")
-- fazemos a remocao de duplicados antes ou depois de encontrar os outliers
-- os outliers sao mal calculados pois so deviam ser feitos outliers com medicoes do mesmo sensor e da mesma zona mas da maneira que está explicado no relatorio fazem esse calculo com todas as 10 medicoes sem descriminar
-- tratar primeiro dos outliers leva a que quase nao exista nenhum anómalo
 
 - duplicados > anomalos > outliers > alertas

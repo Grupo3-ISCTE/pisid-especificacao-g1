@@ -1,5 +1,6 @@
 package org.pt.iscte;
 
+import com.mongodb.BasicDBObject;
 import com.mongodb.MongoClient;
 import com.mongodb.MongoCredential;
 import com.mongodb.MongoWriteException;
@@ -19,9 +20,11 @@ import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.List;
 
-import static com.mongodb.client.model.Sorts.descending;
+import static com.mongodb.client.model.Filters.eq;
 
 public class PrimeiroJava {
+
+    private static final SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'");
 
     private final Ini ini;
 
@@ -74,7 +77,6 @@ public class PrimeiroJava {
      */
     public void mongoToMongo() {
         new Thread(() -> {
-            SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'");
             Calendar cal = Calendar.getInstance();
             cal.setTimeInMillis(new Timestamp(System.currentTimeMillis()).getTime());
             while (true) {
@@ -89,6 +91,7 @@ public class PrimeiroJava {
                         leituraTransformada.append("tipo", record.getString("Sensor").charAt(0));
                         leituraTransformada.append("data", record.getString("Data"));
                         leituraTransformada.append("medicao", record.getString("Medicao"));
+                        leituraTransformada.append("migrado", 0);
                         mongo_collection_to.insertOne(leituraTransformada);
                         // System.out.println("MongoDB to MongoDB" + leituraTransformada);
                     }
@@ -138,20 +141,34 @@ public class PrimeiroJava {
      * abaixo
      */
     public void mongoToMQTT() {
-        new Thread(() -> {
-            while (true) {
-                Document leitura = mongo_collection_to.find().sort(descending("Data")).first();
-                // System.out.println("MQTT sent message: " + leitura);
-                MqttMessage msg = new MqttMessage(leitura.toString().getBytes());
-                msg.setQos(Integer.parseInt(ini.get("Cloud Origin", "cloud_qos_from")));
-                msg.setRetained(true);
-                try {
-                    cloud_client_from.publish(cloud_topic_from, msg);
-                } catch (MqttException e) {
-                    e.printStackTrace();
+        new Thread() {
+            @Override
+            public void run() {
+                while (true) {
+                    try {
+                        FindIterable<Document> records = mongo_collection_to.find(eq("migrado", 0));
+                        for (Document medicao : records) {
+                            MqttMessage msg = new MqttMessage(medicao.toString().getBytes());
+                            sendMessage(msg);
+                            // System.out.println("MQTT sent message: " + records.next());
+                            mongo_collection_to.updateOne(medicao,
+                                    new BasicDBObject().append("$inc", new BasicDBObject().append("migrado", 1)));
+                        }
+                        MqttMessage msg = new MqttMessage("fim".getBytes());
+                        sendMessage(msg);
+                        Thread.sleep(Integer.parseInt(ini.get("Mysql Destination", "sql_delay_to")));
+                    } catch (MqttException | NumberFormatException | InterruptedException e) {
+                        e.printStackTrace();
+                    }
                 }
             }
-        }).start();
+
+            public void sendMessage(MqttMessage msg) throws MqttPersistenceException, MqttException {
+                msg.setQos(Integer.parseInt(ini.get("Cloud Origin", "cloud_qos_from")));
+                msg.setRetained(true);
+                cloud_client_from.publish(cloud_topic_from, msg);
+            }
+        }.start();
     }
 
     /**
@@ -177,14 +194,10 @@ public class PrimeiroJava {
      * 
      * TODO: necessário fazer a gestão de anómalos
      * TODO: necessário fazer método de remoção de OUTLIERS
-     * TODO: guardar ultimo registo enviado para o MySQL para comparar com o ciclo
-     * seguinte e assim remover mais duplicados (novo método)
      * TODO: comentar métodos da Thread
      * 
      * ? Quantos registos são de cada vez? 5 segundos? 10 registos?
-     * ? O que é que vai ser feito primeiro?
      * ? Nas queries envia-se tudo de uma vez ou um registo de cada vez?
-     * ! Neste momento está uma de cada vez
      */
     public void mQTTToMySQL() {
         new Thread() {
@@ -194,24 +207,19 @@ public class PrimeiroJava {
             public void run() {
                 try {
                     cloud_client_to.subscribe(cloud_topic_to, (topic, msg) -> {
-                        if (medicoesGuardadas.size() != Integer
-                                .parseInt(ini.get("Mysql Destination", "sql_medicoes_a_enviar")))
-                            medicoesGuardadas.add(new Medicao(stringToDocument(msg)));
-                        else {
+                        if (!msg.toString().equals("fim")) {
+                            Medicao medicao = new Medicao(stringToDocument(msg));
+                            medicoesGuardadas.add(medicao);
+                        } else {
                             removerDuplicados();
                             removerAnomalos();
                             removerOutliers();
                             criarEMandarQueries();
                             medicoesGuardadas.clear();
-                            sleep(Integer.parseInt(ini.get("Mysql Destination", "delay")));
                         }
                     });
-                } catch (MqttException e) {
-                    try {
-                        sql_connection_to.close();
-                    } catch (SQLException e1) {
-                        e1.printStackTrace();
-                    }
+                    sql_connection_to.close();
+                } catch (MqttException | SQLException e) {
                     e.printStackTrace();
                 }
             }
@@ -220,7 +228,7 @@ public class PrimeiroJava {
                 String mensagem = new String(msg.getPayload()).split("Document")[1].replace("=", "\":\"").replace(", ",
                         "\",\"");
                 mensagem = mensagem.substring(1, mensagem.length() - 1).replace("}", "\"}").replace("{", "{\"");
-                System.out.println("MQTT received message: " + mensagem);
+                // System.out.println("MQTT received message: " + mensagem.toString());
                 return Document.parse(mensagem);
             }
 
@@ -228,12 +236,10 @@ public class PrimeiroJava {
                 List<Medicao> semDuplicados = new ArrayList<>();
                 semDuplicados.add(medicoesGuardadas.get(0));
                 for (Medicao m : medicoesGuardadas) {
-                    for (int i = 0; i < semDuplicados.size(); i++) {
-                        if (semDuplicados.get(i).getIDSensor() != m.getIDSensor()
-                                || semDuplicados.get(i).getIDZona() != m.getIDZona()
-                                || semDuplicados.get(i).getLeitura() != m.getLeitura()) {
-                            semDuplicados.add(m);
-                        }
+                    if (semDuplicados.get(semDuplicados.size() - 1).getIDSensor() != m.getIDSensor()
+                            || semDuplicados.get(semDuplicados.size() - 1).getIDZona() != m.getIDZona()
+                            || semDuplicados.get(semDuplicados.size() - 1).getLeitura() != m.getLeitura()) {
+                        semDuplicados.add(m);
                     }
                 }
                 medicoesGuardadas = semDuplicados;
@@ -261,11 +267,11 @@ public class PrimeiroJava {
 
             public void criarEMandarQueries() throws SQLException {
                 for (Medicao m : medicoesGuardadas) {
-                    String query = "INSERT INTO " + sql_table_to + "(IDSensor, IDZona, Hora, Leitura) VALUES("
+                    String query = "INSERT INTO Medicao(IDSensor, IDZona, Hora, Leitura) VALUES("
                             + m.getIDSensor() + ", " + m.getIDZona() + ", '" + m.getHora() + "', " + m.getLeitura()
                             + ")";
                     sql_connection_to.prepareStatement(query).execute();
-                    System.out.println("MySQL query: " + query);
+                    // System.out.println("MySQL query: " + query);
                 }
             }
         }.start();
@@ -273,16 +279,13 @@ public class PrimeiroJava {
 
     public static void main(String[] args) throws IOException, SQLException, MqttException {
         PrimeiroJava primeiroJava = new PrimeiroJava(new Ini(new File("src/main/java/org/pt/iscte/config.ini")));
-
         primeiroJava.connectFromMongo();
         primeiroJava.connectToMongo();
         primeiroJava.mongoToMongo();
-
-        // primeiroJava.connectFromMQTT();
-        // primeiroJava.connectToMQTT();
-        // primeiroJava.mongoToMQTT();
-
-        // primeiroJava.connectToMySql();
-        // primeiroJava.mQTTToMySQL();
+        primeiroJava.connectFromMQTT();
+        primeiroJava.connectToMQTT();
+        primeiroJava.mongoToMQTT();
+        primeiroJava.connectToMySql();
+        primeiroJava.mQTTToMySQL();
     }
 }
