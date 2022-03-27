@@ -4,6 +4,7 @@ import com.mongodb.MongoClient;
 import com.mongodb.MongoCredential;
 import com.mongodb.MongoWriteException;
 import com.mongodb.ServerAddress;
+import com.mongodb.client.FindIterable;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
 import org.bson.Document;
@@ -13,7 +14,9 @@ import org.ini4j.Ini;
 import java.io.File;
 import java.io.IOException;
 import java.sql.*;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Calendar;
 import java.util.List;
 
 import static com.mongodb.client.model.Sorts.descending;
@@ -41,8 +44,6 @@ public class PrimeiroJava {
 
     /**
      * * Conecção à base de dados MongoDB da Cloud
-     * Data Base: sid2022
-     * Collection: medicoes
      */
     public void connectFromMongo() {
         MongoClient mongo_client_from = new MongoClient(
@@ -58,9 +59,6 @@ public class PrimeiroJava {
 
     /**
      * * Conecção à base de dados MongoDB Local
-     * Data Base: estufa
-     * Collection: medicoes
-     * ! Difere do nosso por ter apenas uma coleção e os nomes serem diferentes
      * ? necessário colocar user e password
      */
     public void connectToMongo() {
@@ -73,33 +71,31 @@ public class PrimeiroJava {
 
     /**
      * * Transferência de dados do MongoDB da Cloud para o MongoDB Local
-     * TODO: necessário perceber se todos os dados da cloud estão a ser recebidos
-     * TODO: necessário perceber se a remoção de duplicados está a ser bem feita
-     * 
      */
     public void mongoToMongo() {
         new Thread(() -> {
-            Document last = null;
+            SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'");
+            Calendar cal = Calendar.getInstance();
+            cal.setTimeInMillis(new Timestamp(System.currentTimeMillis()).getTime());
             while (true) {
-                Document leitura = mongo_collection_from.find().sort(descending("Data")).first();
+                FindIterable<Document> records = mongo_collection_from
+                        .find(new Document("Data", sdf.format(new Timestamp(cal.getTime().getTime())))).limit(6);
                 try {
-                    if (last == null || !leitura.get("_id").equals(last.get("_id"))) {
-                        // if(last!=null) System.out.println("Last: " + last.get("_id") + "\n" + "Novo:
-                        // " + leitura.get("_id"));
+                    for (Document record : records) {
                         Document leituraTransformada = new Document();
-                        leituraTransformada.append("_id", leitura.getObjectId("_id"));
-                        leituraTransformada.append("zona", leitura.getString("Zona").charAt(1));
-                        leituraTransformada.append("sensor", leitura.getString("Zona").charAt(1));
-                        leituraTransformada.append("tipo", leitura.getString("Sensor").charAt(0));
-                        leituraTransformada.append("data", leitura.getString("Data"));
-                        leituraTransformada.append("medicao", leitura.getString("Medicao"));
+                        leituraTransformada.append("_id", record.getObjectId("_id"));
+                        leituraTransformada.append("zona", record.getString("Zona").charAt(1));
+                        leituraTransformada.append("sensor", record.getString("Zona").charAt(1));
+                        leituraTransformada.append("tipo", record.getString("Sensor").charAt(0));
+                        leituraTransformada.append("data", record.getString("Data"));
+                        leituraTransformada.append("medicao", record.getString("Medicao"));
                         mongo_collection_to.insertOne(leituraTransformada);
                         // System.out.println("MongoDB to MongoDB" + leituraTransformada);
-                        last = leitura;
                     }
                 } catch (MongoWriteException e) {
-                    System.out.println("A medicao anterior ja esta na base de dados local.");
+                    // System.out.println("A medicao anterior ja esta na base de dados local.");
                 }
+                cal.add(Calendar.SECOND, +1);
             }
         }).start();
     }
@@ -122,7 +118,6 @@ public class PrimeiroJava {
 
     /**
      * * Conecção ao Broker para posterior leitura das medicoes
-     * ! Difere do método anterior no nome do cliente
      * 
      * @throws MqttException
      */
@@ -139,23 +134,23 @@ public class PrimeiroJava {
 
     /**
      * * Envio das medições do Mongo para o Broker
-     * ! Necessário ciclo while true que entretanto foi desativado por razões de
-     * teste
+     * ! Possibilidade de usar Broker para enviar dados perdidos caso programa vá
+     * abaixo
      */
     public void mongoToMQTT() {
         new Thread(() -> {
-            // while(true){
-            Document leitura = mongo_collection_to.find().sort(descending("Data")).first();
-            // System.out.println("MQTT sent message: " + leitura);
-            MqttMessage msg = new MqttMessage(leitura.toString().getBytes());
-            msg.setQos(Integer.parseInt(ini.get("Cloud Origin", "cloud_qos_from")));
-            msg.setRetained(true);
-            try {
-                cloud_client_from.publish(cloud_topic_from, msg);
-            } catch (MqttException e) {
-                e.printStackTrace();
+            while (true) {
+                Document leitura = mongo_collection_to.find().sort(descending("Data")).first();
+                // System.out.println("MQTT sent message: " + leitura);
+                MqttMessage msg = new MqttMessage(leitura.toString().getBytes());
+                msg.setQos(Integer.parseInt(ini.get("Cloud Origin", "cloud_qos_from")));
+                msg.setRetained(true);
+                try {
+                    cloud_client_from.publish(cloud_topic_from, msg);
+                } catch (MqttException e) {
+                    e.printStackTrace();
+                }
             }
-            // }
         }).start();
     }
 
@@ -175,21 +170,19 @@ public class PrimeiroJava {
      * * Envio dos dados do Broker para o MySQL
      * * 1 - Recebemos os dados
      * * 2 - Removemos os duplicados
-     * * 3 - Removemos os anomalos (?)
+     * * 3 - Removemos os anomalos
      * * 4 - Removemos os outliers
      * * 5 - Enviamos as queries
      * * 6 - Dorme 5 segundos
      * 
-     * TODO: necessário fazer método de remoção de OUTLIERS
      * TODO: necessário fazer a gestão de anómalos
+     * TODO: necessário fazer método de remoção de OUTLIERS
      * TODO: guardar ultimo registo enviado para o MySQL para comparar com o ciclo
-     * TODO: seguinte e assim remover mais duplicados (novo método)
+     * seguinte e assim remover mais duplicados (novo método)
      * TODO: comentar métodos da Thread
      * 
      * ? Quantos registos são de cada vez? 5 segundos? 10 registos?
      * ? O que é que vai ser feito primeiro?
-     * ? É aqui ou no segundo java que se remove os anómalos?
-     * ! implementado no segundo neste momento
      * ? Nas queries envia-se tudo de uma vez ou um registo de cada vez?
      * ! Neste momento está uma de cada vez
      */
@@ -205,8 +198,9 @@ public class PrimeiroJava {
                                 .parseInt(ini.get("Mysql Destination", "sql_medicoes_a_enviar")))
                             medicoesGuardadas.add(new Medicao(stringToDocument(msg)));
                         else {
-                            removeDuplicates();
-                            removeOutliers();
+                            removerDuplicados();
+                            removerAnomalos();
+                            removerOutliers();
                             criarEMandarQueries();
                             medicoesGuardadas.clear();
                             sleep(Integer.parseInt(ini.get("Mysql Destination", "delay")));
@@ -230,23 +224,7 @@ public class PrimeiroJava {
                 return Document.parse(mensagem);
             }
 
-            // FALTA ORDENAR OS OUTLIERS PARA SABER BEM Q1 e Q3
-            // ESTA MAL EXPLICADO PQ TEMOS DE AGRUPAR POR SENSOR e ZONA
-            public void removeOutliers() {
-                // List<Medicao> semOutliers = new ArrayList<>();
-                // double q1 = medicoesGuardadas.get(medicoesGuardadas.size()/4).leitura;
-                // double q3 = medicoesGuardadas.get(3 * medicoesGuardadas.size()/4).leitura;
-                // double iqr = q3 - q1;
-                // for(Medicao m: medicoesGuardadas){
-                // double val = m.leitura;
-                // if(val >= q1 - iqr - 1 && val <= q3 + iqr + 1){
-                // semOutliers.add(m);
-                // }
-                // }
-                // medicoesGuardadas = semOutliers;
-            }
-
-            public void removeDuplicates() {
+            public void removerDuplicados() {
                 List<Medicao> semDuplicados = new ArrayList<>();
                 semDuplicados.add(medicoesGuardadas.get(0));
                 for (Medicao m : medicoesGuardadas) {
@@ -259,6 +237,26 @@ public class PrimeiroJava {
                     }
                 }
                 medicoesGuardadas = semDuplicados;
+            }
+
+            public void removerAnomalos() {
+
+            }
+
+            // FALTA ORDENAR OS OUTLIERS PARA SABER BEM Q1 e Q3
+            // ESTA MAL EXPLICADO PQ TEMOS DE AGRUPAR POR SENSOR e ZONA
+            public void removerOutliers() {
+                // List<Medicao> semOutliers = new ArrayList<>();
+                // double q1 = medicoesGuardadas.get(medicoesGuardadas.size()/4).leitura;
+                // double q3 = medicoesGuardadas.get(3 * medicoesGuardadas.size()/4).leitura;
+                // double iqr = q3 - q1;
+                // for(Medicao m: medicoesGuardadas){
+                // double val = m.leitura;
+                // if(val >= q1 - iqr - 1 && val <= q3 + iqr + 1){
+                // semOutliers.add(m);
+                // }
+                // }
+                // medicoesGuardadas = semOutliers;
             }
 
             public void criarEMandarQueries() throws SQLException {
@@ -280,11 +278,11 @@ public class PrimeiroJava {
         primeiroJava.connectToMongo();
         primeiroJava.mongoToMongo();
 
-        primeiroJava.connectFromMQTT();
-        primeiroJava.connectToMQTT();
-        primeiroJava.mongoToMQTT();
+        // primeiroJava.connectFromMQTT();
+        // primeiroJava.connectToMQTT();
+        // primeiroJava.mongoToMQTT();
 
-        primeiroJava.connectToMySql();
-        primeiroJava.mQTTToMySQL();
+        // primeiroJava.connectToMySql();
+        // primeiroJava.mQTTToMySQL();
     }
 }

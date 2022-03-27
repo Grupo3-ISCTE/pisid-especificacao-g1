@@ -35,10 +35,7 @@ public class SegundoJava {
 
     new Thread(() -> {
       try {
-        // lerTabelaMedicao();
-        verificarTabelaSensor();
-        // criarRegistoErroSensor();
-        // removerRegistoMedicao();
+        lerTabelaMedicao();
         // lerTabelaParametroCultura();
         // criarRegistoAlerta();
       } catch (SQLException e) {
@@ -92,37 +89,6 @@ public class SegundoJava {
   public void lerTabelaMedicao() throws SQLException {
     Statement statement = sql_connection_from.createStatement();
     ResultSet resultSet = statement.executeQuery(sql_table_to);
-  }
-
-  /**
-   * TODO: Ainda nao sabemos se isto é para fazer antes ou depois da inserção de
-   * TODO: medicoes
-   * 
-   * @throws SQLException
-   */
-  public void verificarTabelaSensor() throws SQLException {
-    Statement statement = sql_connection_from.createStatement();
-    ResultSet resultSet = statement.executeQuery(ini.get("Mysql Origin", "sql_select_from_table"));
-    List<Sensor> sensorList = new ArrayList<>();
-
-    while (resultSet.next())
-      sensorList.add(new Sensor(resultSet));
-  }
-
-  /**
-   * TODO: Ainda nao sabemos se isto é para fazer antes ou depois da inserção de
-   * TODO: medicoes
-   */
-  public void criarRegistoErroSensor() {
-
-  }
-
-  /**
-   * TODO: Ainda nao sabemos se isto é para fazer antes ou depois da inserção de
-   * TODO: medicoes
-   */
-  public void removerRegistoMedicao() {
-
   }
 
   public void lerTabelaParametroCultura() {
