@@ -18,7 +18,9 @@ import java.sql.*;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Calendar;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import static com.mongodb.client.model.Filters.eq;
 
@@ -32,14 +34,14 @@ public class PrimeiroJava {
 
     private MongoCollection<Document> mongo_collection_to;
 
-    private IMqttClient cloud_client_from;
+    private MqttClient cloud_client_from;
     private String cloud_topic_from;
 
-    private IMqttClient cloud_client_to;
+    private MqttClient cloud_client_to;
     private String cloud_topic_to;
 
+    private Connection sql_connection_from;
     private Connection sql_connection_to;
-    private String sql_table_to;
 
     public PrimeiroJava(Ini ini) {
         this.ini = ini;
@@ -73,6 +75,60 @@ public class PrimeiroJava {
     }
 
     /**
+     * * Conecção ao Broker para posterior envio das medicoes
+     *
+     */
+    public void connectFromMQTT() throws MqttException {
+        cloud_topic_from = ini.get("Cloud Origin", "cloud_topic_from");
+        cloud_client_from = new MqttClient(ini.get("Cloud Origin", "cloud_server_from"),
+                ini.get("Cloud Origin", "cloud_client_from"));
+        MqttConnectOptions cloud_options_from = new MqttConnectOptions();
+        cloud_options_from.setAutomaticReconnect(true);
+        cloud_options_from.setCleanSession(true);
+        cloud_options_from.setConnectionTimeout(10);
+        cloud_client_from.connect(cloud_options_from);
+    }
+
+    /**
+     * * Conecção ao Broker para posterior leitura das medicoes
+     *
+     */
+    public void connectToMQTT() throws MqttException {
+        cloud_topic_to = ini.get("Cloud Destination", "cloud_topic_to");
+        cloud_client_to = new MqttClient(ini.get("Cloud Destination", "cloud_server_to"),
+                ini.get("Cloud Destination", "cloud_client_to"));
+        MqttConnectOptions cloud_options_to = new MqttConnectOptions();
+        cloud_options_to.setAutomaticReconnect(true);
+        cloud_options_to.setCleanSession(true);
+        cloud_options_to.setConnectionTimeout(10);
+        cloud_client_to.connect(cloud_options_to);
+    }
+
+    /**
+     * * Conecção ao MySQL da Cloud para posterior análise da tabela Sensor
+     * ? Para que vai ser utilizada a tabela Zona?
+     * 
+     * @throws SQLException
+     */
+    public void connectFromMySql() throws SQLException {
+        String connection_link = ini.get("Mysql Origin", "sql_database_connection_from");
+        String user = ini.get("Mysql Origin", "sql_database_user_from");
+        String password = ini.get("Mysql Origin", "sql_database_password_from");
+        sql_connection_from = DriverManager.getConnection(connection_link, user, password);
+    }
+
+    /**
+     * * Conecção ao MySQL Local para envio posterior de queries
+     * 
+     * @throws SQLException
+     */
+    public void connectToMySql() throws SQLException {
+        sql_connection_to = DriverManager.getConnection(ini.get("Mysql Destination", "sql_database_connection_to"),
+                ini.get("Mysql Destination", "sql_database_user_to"),
+                ini.get("Mysql Destination", "sql_database_password_to"));
+    }
+
+    /**
      * * Transferência de dados do MongoDB da Cloud para o MongoDB Local
      */
     public void mongoToMongo() {
@@ -87,8 +143,8 @@ public class PrimeiroJava {
                         Document leituraTransformada = new Document();
                         leituraTransformada.append("_id", record.getObjectId("_id"));
                         leituraTransformada.append("zona", record.getString("Zona").charAt(1));
-                        leituraTransformada.append("sensor", record.getString("Zona").charAt(1));
                         leituraTransformada.append("tipo", record.getString("Sensor").charAt(0));
+                        leituraTransformada.append("sensor", record.getString("Sensor").charAt(1));
                         leituraTransformada.append("data", record.getString("Data"));
                         leituraTransformada.append("medicao", record.getString("Medicao"));
                         leituraTransformada.append("migrado", 0);
@@ -104,38 +160,6 @@ public class PrimeiroJava {
     }
 
     /**
-     * * Conecção ao Broker para posterior envio das medicoes
-     * 
-     * @throws MqttException
-     */
-    public void connectFromMQTT() throws MqttException {
-        cloud_topic_from = ini.get("Cloud Origin", "cloud_topic_from");
-        cloud_client_from = new MqttClient(ini.get("Cloud Origin", "cloud_server_from"),
-                ini.get("Cloud Origin", "cloud_client_from"));
-        MqttConnectOptions cloud_options_from = new MqttConnectOptions();
-        cloud_options_from.setAutomaticReconnect(true);
-        cloud_options_from.setCleanSession(true);
-        cloud_options_from.setConnectionTimeout(10);
-        cloud_client_from.connect(cloud_options_from);
-    }
-
-    /**
-     * * Conecção ao Broker para posterior leitura das medicoes
-     * 
-     * @throws MqttException
-     */
-    public void connectToMQTT() throws MqttException {
-        cloud_topic_to = ini.get("Cloud Destination", "cloud_topic_to");
-        cloud_client_to = new MqttClient(ini.get("Cloud Destination", "cloud_server_to"),
-                ini.get("Cloud Destination", "cloud_client_to"));
-        MqttConnectOptions cloud_options_to = new MqttConnectOptions();
-        cloud_options_to.setAutomaticReconnect(true);
-        cloud_options_to.setCleanSession(true);
-        cloud_options_to.setConnectionTimeout(10);
-        cloud_client_to.connect(cloud_options_to);
-    }
-
-    /**
      * * Envio das medições do Mongo para o Broker
      * ! Possibilidade de usar Broker para enviar dados perdidos caso programa vá
      * abaixo
@@ -145,25 +169,24 @@ public class PrimeiroJava {
             @Override
             public void run() {
                 while (true) {
-                    try {
-                        FindIterable<Document> records = mongo_collection_to.find(eq("migrado", 0));
-                        for (Document medicao : records) {
-                            MqttMessage msg = new MqttMessage(medicao.toString().getBytes());
-                            sendMessage(msg);
-                            // System.out.println("MQTT sent message: " + records.next());
-                            mongo_collection_to.updateOne(medicao,
-                                    new BasicDBObject().append("$inc", new BasicDBObject().append("migrado", 1)));
+                    if (cloud_client_from.isConnected() && cloud_client_to.isConnected()) {
+                        try {
+                            FindIterable<Document> records = mongo_collection_to.find(eq("migrado", 0));
+                            for (Document medicao : records) {
+                                sendMessage(new MqttMessage(medicao.toString().getBytes()));
+                                mongo_collection_to.updateOne(medicao,
+                                        new BasicDBObject().append("$inc", new BasicDBObject().append("migrado", 1)));
+                            }
+                            sendMessage(new MqttMessage("fim".getBytes()));
+                            Thread.sleep(Integer.parseInt(ini.get("Mysql Destination", "sql_delay_to")));
+                        } catch (MqttException | NumberFormatException | InterruptedException e) {
+                            e.printStackTrace();
                         }
-                        MqttMessage msg = new MqttMessage("fim".getBytes());
-                        sendMessage(msg);
-                        Thread.sleep(Integer.parseInt(ini.get("Mysql Destination", "sql_delay_to")));
-                    } catch (MqttException | NumberFormatException | InterruptedException e) {
-                        e.printStackTrace();
                     }
                 }
             }
 
-            public void sendMessage(MqttMessage msg) throws MqttPersistenceException, MqttException {
+            public void sendMessage(MqttMessage msg) throws MqttException {
                 msg.setQos(Integer.parseInt(ini.get("Cloud Origin", "cloud_qos_from")));
                 msg.setRetained(true);
                 cloud_client_from.publish(cloud_topic_from, msg);
@@ -172,106 +195,142 @@ public class PrimeiroJava {
     }
 
     /**
-     * * Conecção ao MySQL Local para envio posterior de queries
-     * 
-     * @throws SQLException
-     */
-    public void connectToMySql() throws SQLException {
-        sql_table_to = ini.get("Mysql Destination", "sql_table_to");
-        sql_connection_to = DriverManager.getConnection(ini.get("Mysql Destination", "sql_database_connection_to"),
-                ini.get("Mysql Destination", "sql_database_user_to"),
-                ini.get("Mysql Destination", "sql_database_password_to"));
-    }
-
-    /**
      * * Envio dos dados do Broker para o MySQL
-     * * 1 - Recebemos os dados
-     * * 2 - Removemos os duplicados
-     * * 3 - Removemos os anomalos
-     * * 4 - Removemos os outliers
-     * * 5 - Enviamos as queries
-     * * 6 - Dorme 5 segundos
-     * 
-     * TODO: necessário fazer a gestão de anómalos
-     * TODO: necessário fazer método de remoção de OUTLIERS
+     *
      * TODO: comentar métodos da Thread
-     * 
-     * ? Quantos registos são de cada vez? 5 segundos? 10 registos?
-     * ? Nas queries envia-se tudo de uma vez ou um registo de cada vez?
+     * ! Temos ainda que guardar o ultimo registo de cada um dos sensores para
+     * ! tentar remover ainda mais duplicados
      */
     public void mQTTToMySQL() {
         new Thread() {
-            private List<Medicao> medicoesGuardadas = new ArrayList<>();
+            String[] listaSensores = new String[] { "T1", "T2", "H1", "H2", "L1", "L2" };
+            List<Document> mensagensRecebidas = new ArrayList<>();
+            MMap medicoes = new MMap();
+            Map<String, Double[]> limitesSensores = new HashMap<>();
 
             @Override
             public void run() {
                 try {
                     cloud_client_to.subscribe(cloud_topic_to, (topic, msg) -> {
                         if (!msg.toString().equals("fim")) {
-                            Medicao medicao = new Medicao(stringToDocument(msg));
-                            medicoesGuardadas.add(medicao);
+                            mensagensRecebidas.add(stringToDocument(msg));
                         } else {
-                            removerDuplicados();
-                            removerAnomalos();
+                            removerMensagensRepetidas();
+                            dividirMedicoes();
+                            removerValoresDuplicados();
+                            analisarTabelaSensor();
+                            removerValoresAnomalos();
                             removerOutliers();
                             criarEMandarQueries();
-                            medicoesGuardadas.clear();
+
+                            medicoes.clear();
+                            mensagensRecebidas.clear();
                         }
                     });
-                    sql_connection_to.close();
-                } catch (MqttException | SQLException e) {
-                    e.printStackTrace();
+                } catch (MqttException ignored) {
                 }
             }
 
             public Document stringToDocument(MqttMessage msg) {
-                String mensagem = new String(msg.getPayload()).split("Document")[1].replace("=", "\":\"").replace(", ",
+                String m = new String(msg.getPayload()).split("Document")[1].replace("=", "\":\"").replace(", ",
                         "\",\"");
-                mensagem = mensagem.substring(1, mensagem.length() - 1).replace("}", "\"}").replace("{", "{\"");
-                // System.out.println("MQTT received message: " + mensagem.toString());
-                return Document.parse(mensagem);
+                return Document
+                        .parse(m.substring(1, m.length() - 1).replace("}", "\"}").replace("{", "{\""));
             }
 
-            public void removerDuplicados() {
-                List<Medicao> semDuplicados = new ArrayList<>();
-                semDuplicados.add(medicoesGuardadas.get(0));
-                for (Medicao m : medicoesGuardadas) {
-                    if (semDuplicados.get(semDuplicados.size() - 1).getIDSensor() != m.getIDSensor()
-                            || semDuplicados.get(semDuplicados.size() - 1).getIDZona() != m.getIDZona()
-                            || semDuplicados.get(semDuplicados.size() - 1).getLeitura() != m.getLeitura()) {
-                        semDuplicados.add(m);
+            public void removerMensagensRepetidas() {
+                List<Document> temp = new ArrayList<>();
+                for (Document d : mensagensRecebidas)
+                    if (!temp.contains(d))
+                        temp.add(d);
+                mensagensRecebidas = temp;
+            }
+
+            public void dividirMedicoes() {
+                for (Document d : mensagensRecebidas) {
+                    Medicao m = new Medicao(d);
+                    medicoes.get(m.getTipoSensor() + m.getIDSensor()).add(m);
+                }
+            }
+
+            public void removerValoresDuplicados() {
+                MMap temp = new MMap();
+                for (String sensor : listaSensores) {
+                    if (!medicoes.get(sensor).isEmpty()) {
+                        temp.get(sensor).add(medicoes.get(sensor).get(0));
+                        try {
+                            for (int i = 1; i < medicoes.get(sensor).size(); i++)
+                                if (medicoes.get(sensor).get(i).getLeitura() != medicoes.get(sensor).get(i - 1)
+                                        .getLeitura()) {
+                                    temp.get(sensor).add(medicoes.get(sensor).get(i));
+                                }
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                        }
                     }
                 }
-                medicoesGuardadas = semDuplicados;
+                medicoes = temp;
             }
 
-            public void removerAnomalos() {
-
+            public void analisarTabelaSensor() throws SQLException {
+                Statement statement = sql_connection_from.createStatement();
+                ResultSet rs = statement.executeQuery(ini.get("Mysql Origin", "sql_select_from_table"));
+                while (rs.next()) {
+                    limitesSensores.put(rs.getString(2) + rs.getInt(1),
+                            new Double[] { rs.getDouble(3), rs.getDouble(4) });
+                }
             }
 
-            // FALTA ORDENAR OS OUTLIERS PARA SABER BEM Q1 e Q3
-            // ESTA MAL EXPLICADO PQ TEMOS DE AGRUPAR POR SENSOR e ZONA
+            public void removerValoresAnomalos() {
+                for (String s : listaSensores) {
+                    if (!medicoes.get(s).isEmpty()) {
+                        for (int i = 0; i < medicoes.get(s).size(); i++) {
+                            if (medicoes.get(s).get(i).getLeitura() < limitesSensores.get(s)[0]
+                                    || medicoes.get(s).get(i).getLeitura() > limitesSensores.get(s)[1]) {
+                                medicoes.get(s).remove(i);
+                                i--;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // !Testes metodo sort e remoçao de outliers
             public void removerOutliers() {
-                // List<Medicao> semOutliers = new ArrayList<>();
-                // double q1 = medicoesGuardadas.get(medicoesGuardadas.size()/4).leitura;
-                // double q3 = medicoesGuardadas.get(3 * medicoesGuardadas.size()/4).leitura;
-                // double iqr = q3 - q1;
-                // for(Medicao m: medicoesGuardadas){
-                // double val = m.leitura;
-                // if(val >= q1 - iqr - 1 && val <= q3 + iqr + 1){
-                // semOutliers.add(m);
-                // }
-                // }
-                // medicoesGuardadas = semOutliers;
+                try {
+                    if (!medicoes.isEmpty()) {
+                        medicoes.sort();
+                        for (String s : listaSensores) {
+                            if (!medicoes.get(s).isEmpty()) {
+                                double q1 = medicoes.get(s).get(medicoes.get(s).size() / 4).getLeitura();
+                                double q3 = medicoes.get(s).get(3 * medicoes.get(s).size() / 4).getLeitura();
+                                double iqr = q3 - q1;
+                                for (int i = 0; i < medicoes.get(s).size(); i++) {
+                                    double val = medicoes.get(s).get(i).getLeitura();
+                                    if (val < q1 - iqr - 1 || val > q3 + iqr + 1) {
+                                        System.out.println("OUTLIER: " + medicoes.get(s).get(i));
+                                        medicoes.get(s).remove(i);
+                                        i--;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
             }
 
             public void criarEMandarQueries() throws SQLException {
-                for (Medicao m : medicoesGuardadas) {
-                    String query = "INSERT INTO Medicao(IDSensor, IDZona, Hora, Leitura) VALUES("
-                            + m.getIDSensor() + ", " + m.getIDZona() + ", '" + m.getHora() + "', " + m.getLeitura()
-                            + ")";
-                    sql_connection_to.prepareStatement(query).execute();
-                    // System.out.println("MySQL query: " + query);
+                for (String s : listaSensores) {
+                    for (Medicao m : medicoes.get(s)) {
+                        String query = "INSERT INTO Medicao(IDSensor, IDZona, Hora, Leitura) VALUES("
+                                + m.getIDSensor() + ", " + m.getIDZona() + ", '" + m.getHora() + "', " +
+                                m.getLeitura()
+                                + ")";
+                        sql_connection_to.prepareStatement(query).execute();
+                        // System.out.println("MySQL query: " + query);
+                    }
                 }
             }
         }.start();
@@ -286,6 +345,7 @@ public class PrimeiroJava {
         primeiroJava.connectToMQTT();
         primeiroJava.mongoToMQTT();
         primeiroJava.connectToMySql();
+        primeiroJava.connectFromMySql();
         primeiroJava.mQTTToMySQL();
     }
 }

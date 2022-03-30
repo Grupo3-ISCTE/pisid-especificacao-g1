@@ -36,21 +36,6 @@ public class SegundoJava {
   }
 
   /**
-   * * Conecção ao MySQL da Cloud para posterior análise da tabela Sensor
-   * ? Para que vai ser utilizada a tabela Zona?
-   * 
-   * @throws SQLException
-   */
-  public void connectFromMySql() throws SQLException {
-    System.out.println("Connecting to External MySQL Database");
-    String connection_link = ini.get("Mysql Origin", "sql_database_connection_from");
-    String user = ini.get("Mysql Origin", "sql_database_user_from");
-    String password = ini.get("Mysql Origin", "sql_database_password_from");
-    sql_connection_from = DriverManager.getConnection(connection_link, user, password);
-    System.out.println("Connected to External MySQL Database");
-  }
-
-  /**
    * * Leitura das medições presentes na tabela Medicao para posterir análise de
    * * futuros alertas
    * TODO: Falta guardar registos numa lista
@@ -93,7 +78,6 @@ public class SegundoJava {
     Ini ini = new Ini(new File("src/main/java/org/pt/iscte/config.ini"));
     SegundoJava segundojava = new SegundoJava(ini);
     segundojava.connectToMySql();
-    segundojava.connectFromMySql();
     segundojava.criarRegistoAlerta();
   }
 }
