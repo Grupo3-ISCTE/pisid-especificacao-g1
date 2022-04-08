@@ -3,25 +3,28 @@ package org.pt.iscte;
 import org.bson.Document;
 import org.eclipse.paho.client.mqttv3.*;
 import org.ini4j.Ini;
-
 import java.io.File;
-import java.io.IOException;
 import java.sql.*;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-//TODO: Temos que ver como se criam as replicas do mongo
-
-public class SegundoJava {
-
-  private final Ini ini;
-
-  private String cloud_topic_to;
+public class MQTTToMySQL {
+  private final String cloud_topic_to;
+  private final String cloud_server_to;
+  private final String cloud_client_name_to;
   private MqttClient cloud_client_to;
 
+  private final String sql_database_connection_from;
+  private final String sql_database_user_from;
+  private final String sql_database_password_from;
   private Connection sql_connection_from;
+  private final String sql_select_table_from;
+
+  private final String sql_database_connection_to;
+  private final String sql_database_user_to;
+  private final String sql_database_password_to;
   private Connection sql_connection_to;
 
   String[] listaSensores = new String[] { "T1", "T2", "H1", "H2", "L1", "L2" };
@@ -29,17 +32,23 @@ public class SegundoJava {
   MMap medicoes = new MMap();
   Map<String, Double[]> limitesSensores = new HashMap<>();
 
-  public SegundoJava(Ini ini) {
-    this.ini = ini;
+  public MQTTToMySQL(Ini ini) {
+    cloud_topic_to = ini.get("Cloud Destination", "cloud_topic_to");
+    cloud_server_to = ini.get("Cloud Destination", "cloud_server_to");
+    cloud_client_name_to = ini.get("Cloud Destination", "cloud_client_to");
+
+    sql_database_connection_from = ini.get("Mysql Origin", "sql_database_connection_from");
+    sql_database_user_from = ini.get("Mysql Origin", "sql_database_user_from");
+    sql_database_password_from = ini.get("Mysql Origin", "sql_database_password_from");
+    sql_select_table_from = ini.get("Mysql Origin", "sql_select_from_table");
+
+    sql_database_connection_to = ini.get("Mysql Destination", "sql_database_connection_to");
+    sql_database_user_to = ini.get("Mysql Destination", "sql_database_user_to");
+    sql_database_password_to = ini.get("Mysql Destination", "sql_database_password_to");
   }
 
-  /**
-   * * Conecção ao Broker para posterior leitura das medicoes
-   */
   public void connectToMQTT() throws MqttException {
-    cloud_topic_to = ini.get("Cloud Destination", "cloud_topic_to");
-    cloud_client_to = new MqttClient(ini.get("Cloud Destination", "cloud_server_to"),
-            ini.get("Cloud Destination", "cloud_client_to"));
+    cloud_client_to = new MqttClient(cloud_server_to,cloud_client_name_to);
     MqttConnectOptions cloud_options_to = new MqttConnectOptions();
     cloud_options_to.setAutomaticReconnect(true);
     cloud_options_to.setCleanSession(true);
@@ -47,42 +56,30 @@ public class SegundoJava {
     cloud_client_to.connect(cloud_options_to);
   }
 
-  /**
-   * * Conecção ao MySQL da Cloud para posterior análise da tabela Sensor
-   * ? Para que vai ser utilizada a tabela Zona?
-   */
+  // TODO: Para que vai ser utilizada a tabela Zona?
   public void connectFromMySql() throws SQLException {
-    String connection_link = ini.get("Mysql Origin", "sql_database_connection_from");
-    String user = ini.get("Mysql Origin", "sql_database_user_from");
-    String password = ini.get("Mysql Origin", "sql_database_password_from");
-    sql_connection_from = DriverManager.getConnection(connection_link, user, password);
+    sql_connection_from = DriverManager.
+            getConnection(sql_database_connection_from, sql_database_user_from, sql_database_password_from);
   }
 
-  /**
-   * * Conecção ao MySQL Local para envio posterior de queries
-   */
   public void connectToMySql() throws SQLException {
-    sql_connection_to = DriverManager.getConnection(ini.get("Mysql Destination", "sql_database_connection_to"),
-        ini.get("Mysql Destination", "sql_database_user_to"),
-        ini.get("Mysql Destination", "sql_database_password_to"));
+    sql_connection_to = DriverManager.
+            getConnection(sql_database_connection_to,sql_database_user_to,sql_database_password_to);
   }
 
-  /**
-   * * Envio dos dados do Broker para o MySQL
-   */
-  public void mQTTToMySQL() {
+  public void receiveAndSendLastRecords() {
     try {
       cloud_client_to.subscribe(cloud_topic_to, (topic, msg) -> {
         if (!msg.toString().equals("fim")) {
           mensagensRecebidas.add(stringToDocument(msg));
-          //System.out.println(msg);
         } else {
           removerMensagensRepetidas();
           dividirMedicoes();
+          removerMedicoesInvalidas();
           removerValoresDuplicados();
           analisarTabelaSensor();
           removerValoresAnomalos();
-          // removerOutliers();
+          removerOutliers();
           criarEMandarQueries();
 
           medicoes.clear();
@@ -95,12 +92,10 @@ public class SegundoJava {
   }
 
   public Document stringToDocument(MqttMessage msg) {
-    String m = new String(msg.getPayload()).split("Document")[1].replace("=", "\":\"").replace(", ",
-        "\",\"");
+    String m = new String(msg.getPayload()).split("Document")[1].
+            replace("=", "\":\"").replace(", ","\",\"");
     m = m.substring(1, m.length() - 1).replace("}", "\"}").replace("{", "{\"");
-    // System.out.println(m);
-    return Document
-        .parse(m);
+    return Document.parse(m);
   }
 
   public void removerMensagensRepetidas() {
@@ -114,9 +109,14 @@ public class SegundoJava {
   public void dividirMedicoes() {
     for (Document d : mensagensRecebidas) {
       Medicao m = new Medicao(d);
-      //System.out.println(m);
+      // System.out.println(m);
       medicoes.get(m.getSensor()).add(m);
     }
+  }
+
+  // TODO: Fazer método
+  public void removerMedicoesInvalidas(){
+
   }
 
   public void removerValoresDuplicados() {
@@ -140,16 +140,14 @@ public class SegundoJava {
 
   public void analisarTabelaSensor() throws SQLException {
     Statement statement = sql_connection_from.createStatement();
-    ResultSet rs = statement.executeQuery(ini.get("Mysql Origin", "sql_select_from_table"));
+    ResultSet rs = statement.executeQuery(sql_select_table_from);
     while (rs.next()) {
       limitesSensores.put(rs.getString(2) + rs.getInt(1),
           new Double[] { rs.getDouble(3), rs.getDouble(4) });
     }
   }
 
-  /**
-   * ! Devem ser enviados aqui alertas cinzentos
-   */
+  // TODO: Enviar alertas cinzentos
   public void removerValoresAnomalos() {
     for (String s : listaSensores) {
       if (!medicoes.get(s).isEmpty()) {
@@ -164,47 +162,18 @@ public class SegundoJava {
     }
   }
 
-  // !Testes metodo sort e remoçao de outliers
-  // !Os quartis estao mal feitos
+  // TODO: Fazer método (ordenar por data)
   public void removerOutliers() {
-    try {
-      if (!medicoes.isEmpty()) {
-        medicoes.sort();
-        for (String s : listaSensores) {
-          if (!medicoes.get(s).isEmpty()) {
-            double q1 = medicoes.get(s).get(3 * (medicoes.get(s).size() + 1) / 4).getLeitura();
-            double q3 = medicoes.get(s).get((medicoes.get(s).size() + 1) / 4)
-                .getLeitura();
-            double iqr = q3 - q1;
-            for (int i = 0; i < medicoes.get(s).size(); i++) {
-              double val = medicoes.get(s).get(i).getLeitura();
-              if (val < q1 - iqr * 1.5 || val > q3 + iqr * 1.5) {
-                // System.out.println("OUTLIER: " + medicoes.get(s).get(i));
-                medicoes.get(s).remove(i);
-                i--;
-              }
-            }
-          }
-        }
-      }
-    } catch (Exception e) {
-      e.printStackTrace();
-    }
+
   }
 
-  /**
-   * ! Se calhar é melhor termos um sistema de controlo do ID porque já tenho 610
-   * ! de IDMedicao mas so 16 medicoes na tabela xD
-   *
-   */
+  //TODO: Criar sistema de controlo de ID para nao ter AI
   public void criarEMandarQueries() throws SQLException {
     for (String s : listaSensores) {
       for (Medicao m : medicoes.get(s)) {
-        String query = "INSERT INTO Medicao(IDZona, Sensor, DataHora, Leitura) VALUES("
-            + "'" + m.getZona().split("Z")[1] + "', '" + m.getSensor() + "', '" + m.getHora()
-            + "', " +
-            m.getLeitura()
-            + ")";
+        String query = "INSERT INTO Medicao(IDZona, Sensor, DataHora, Leitura) VALUES("+ "'" +
+                m.getZona().split("Z")[1] + "', '" + m.getSensor() + "', '" + m.getHora()
+                + "', " +m.getLeitura()+ ")";
         sql_connection_to.prepareStatement(query).execute();
         System.out.println("MySQL query: " + query);
       }
@@ -213,11 +182,11 @@ public class SegundoJava {
 
   public static void main(String[] args) {
     try {
-      SegundoJava segundojava = new SegundoJava(new Ini(new File("src/main/java/org/pt/iscte/config.ini")));
-      segundojava.connectToMQTT();
-      segundojava.connectFromMySql();
-      segundojava.connectToMySql();
-      segundojava.mQTTToMySQL();
+      MQTTToMySQL mqttsql = new MQTTToMySQL(new Ini(new File("src/main/java/org/pt/iscte/config.ini")));
+      mqttsql.connectToMQTT();
+      mqttsql.connectFromMySql();
+      mqttsql.connectToMySql();
+      mqttsql.receiveAndSendLastRecords();
     } catch (Exception e) {
       e.printStackTrace();
     }
