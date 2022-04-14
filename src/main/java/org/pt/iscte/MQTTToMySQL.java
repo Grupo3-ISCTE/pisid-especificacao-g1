@@ -11,6 +11,16 @@ import java.util.List;
 import java.util.Map;
 
 public class MQTTToMySQL {
+
+  private static final String MYSQL_ORIGIN = "Mysql Origin";
+  private static final String MYSQL_DESTINATION = "Mysql Destination";
+  private static final String CLOUD_DESTINATION = "Cloud Destination";
+
+  String[] listaSensores = new String[] { "T1", "T2", "H1", "H2", "L1", "L2" };
+  List<Document> mensagensRecebidas = new ArrayList<>();
+  MMap medicoes = new MMap();
+  Map<String, Double[]> limitesSensores = new HashMap<>();
+
   private final String cloud_topic_to;
   private final String cloud_server_to;
   private final String cloud_client_name_to;
@@ -27,44 +37,43 @@ public class MQTTToMySQL {
   private final String sql_database_password_to;
   private Connection sql_connection_to;
 
-  String[] listaSensores = new String[] { "T1", "T2", "H1", "H2", "L1", "L2" };
-  List<Document> mensagensRecebidas = new ArrayList<>();
-  MMap medicoes = new MMap();
-  Map<String, Double[]> limitesSensores = new HashMap<>();
-
   public MQTTToMySQL(Ini ini) {
-    cloud_topic_to = ini.get("Cloud Destination", "cloud_topic_to");
-    cloud_server_to = ini.get("Cloud Destination", "cloud_server_to");
-    cloud_client_name_to = ini.get("Cloud Destination", "cloud_client_to");
+    cloud_topic_to = ini.get(CLOUD_DESTINATION, "cloud_topic_to");
+    cloud_server_to = ini.get(CLOUD_DESTINATION, "cloud_server_to");
+    cloud_client_name_to = ini.get(CLOUD_DESTINATION, "cloud_client_to");
 
-    sql_database_connection_from = ini.get("Mysql Origin", "sql_database_connection_from");
-    sql_database_user_from = ini.get("Mysql Origin", "sql_database_user_from");
-    sql_database_password_from = ini.get("Mysql Origin", "sql_database_password_from");
-    sql_select_table_from = ini.get("Mysql Origin", "sql_select_from_table");
+    sql_database_connection_from = ini.get(MYSQL_ORIGIN, "sql_database_connection_from");
+    sql_database_user_from = ini.get(MYSQL_ORIGIN, "sql_database_user_from");
+    sql_database_password_from = ini.get(MYSQL_ORIGIN, "sql_database_password_from");
+    sql_select_table_from = ini.get(MYSQL_ORIGIN, "sql_select_from_table");
 
-    sql_database_connection_to = ini.get("Mysql Destination", "sql_database_connection_to");
-    sql_database_user_to = ini.get("Mysql Destination", "sql_database_user_to");
-    sql_database_password_to = ini.get("Mysql Destination", "sql_database_password_to");
+    sql_database_connection_to = ini.get(MYSQL_DESTINATION, "sql_database_connection_to");
+    sql_database_user_to = ini.get(MYSQL_DESTINATION, "sql_database_user_to");
+    sql_database_password_to = ini.get(MYSQL_DESTINATION, "sql_database_password_to");
   }
 
   public void connectToMQTT() throws MqttException {
-    cloud_client_to = new MqttClient(cloud_server_to,cloud_client_name_to);
+    cloud_client_to = new MqttClient(cloud_server_to, cloud_client_name_to);
+    cloud_client_to.connect(cloud_options_to());
+  }
+
+  private MqttConnectOptions cloud_options_to() {
     MqttConnectOptions cloud_options_to = new MqttConnectOptions();
     cloud_options_to.setAutomaticReconnect(true);
     cloud_options_to.setCleanSession(true);
     cloud_options_to.setConnectionTimeout(10);
-    cloud_client_to.connect(cloud_options_to);
+    return cloud_options_to;
   }
 
   // TODO: Para que vai ser utilizada a tabela Zona?
   public void connectFromMySql() throws SQLException {
-    sql_connection_from = DriverManager.
-            getConnection(sql_database_connection_from, sql_database_user_from, sql_database_password_from);
+    sql_connection_from = DriverManager.getConnection(sql_database_connection_from, sql_database_user_from,
+        sql_database_password_from);
   }
 
   public void connectToMySql() throws SQLException {
-    sql_connection_to = DriverManager.
-            getConnection(sql_database_connection_to,sql_database_user_to,sql_database_password_to);
+    sql_connection_to = DriverManager.getConnection(sql_database_connection_to, sql_database_user_to,
+        sql_database_password_to);
   }
 
   public void receiveAndSendLastRecords() {
@@ -92,8 +101,7 @@ public class MQTTToMySQL {
   }
 
   public Document stringToDocument(MqttMessage msg) {
-    String m = new String(msg.getPayload()).split("Document")[1].
-            replace("=", "\":\"").replace(", ","\",\"");
+    String m = new String(msg.getPayload()).split("Document")[1].replace("=", "\":\"").replace(", ", "\",\"");
     m = m.substring(1, m.length() - 1).replace("}", "\"}").replace("{", "{\"");
     return Document.parse(m);
   }
@@ -115,8 +123,8 @@ public class MQTTToMySQL {
   }
 
   // TODO: Fazer método
-  public void removerMedicoesInvalidas(){
-
+  public void removerMedicoesInvalidas() {
+    // TODO document why this method is empty
   }
 
   public void removerValoresDuplicados() {
@@ -164,16 +172,16 @@ public class MQTTToMySQL {
 
   // TODO: Fazer método (ordenar por data)
   public void removerOutliers() {
-
+    // TODO document why this method is empty
   }
 
-  //TODO: Criar sistema de controlo de ID para nao ter AI
+  // TODO: Criar sistema de controlo de ID para nao ter AI
   public void criarEMandarQueries() throws SQLException {
     for (String s : listaSensores) {
       for (Medicao m : medicoes.get(s)) {
-        String query = "INSERT INTO Medicao(IDZona, Sensor, DataHora, Leitura) VALUES("+ "'" +
-                m.getZona().split("Z")[1] + "', '" + m.getSensor() + "', '" + m.getHora()
-                + "', " +m.getLeitura()+ ")";
+        String query = "INSERT INTO Medicao(IDZona, Sensor, DataHora, Leitura) VALUES(" + "'" +
+            m.getZona().split("Z")[1] + "', '" + m.getSensor() + "', '" + m.getHora()
+            + "', " + m.getLeitura() + ")";
         sql_connection_to.prepareStatement(query).execute();
         System.out.println("MySQL query: " + query);
       }

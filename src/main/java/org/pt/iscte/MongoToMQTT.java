@@ -21,8 +21,11 @@ import static com.mongodb.client.model.Filters.eq;
 
 public class MongoToMQTT {
 
+    private static final String CLOUD_ORIGIN = "Cloud Origin";
+    private static final String MONGO_DESTINATION = "Mongo Destination";
+
     private final List<MongoCollection<Document>> collections = new ArrayList<>();
-    String[] sensores = {"sensort1", "sensort2", "sensorh1", "sensorh2", "sensorl1", "sensorl2"};
+    String[] sensores = { "sensort1", "sensort2", "sensorh1", "sensorh2", "sensorl1", "sensorl2" };
 
     private final String mongo_address_to;
     private final int mongo_port_to;
@@ -39,32 +42,36 @@ public class MongoToMQTT {
     private final int cloud_qos_from;
 
     public MongoToMQTT(Ini ini) {
-        mongo_address_to = ini.get("Mongo Destination", "mongo_address_to");
-        mongo_port_to  = Integer.parseInt(ini.get("Mongo Destination", "mongo_port_to"));
-        mongo_database_name_to = ini.get("Mongo Destination", "mongo_database_to");
-        mongo_user_to = ini.get("Mongo Destination", "mongo_user_to");
-        mongo_password_to = ini.get("Mongo Destination", "mongo_password_to").toCharArray();
-        mongo_credential_database_to = ini.get("Mongo Destination","mongo_credential_database_to");
+        mongo_address_to = ini.get(MONGO_DESTINATION, "mongo_address_to");
+        mongo_port_to = Integer.parseInt(ini.get(MONGO_DESTINATION, "mongo_port_to"));
+        mongo_database_name_to = ini.get(MONGO_DESTINATION, "mongo_database_to");
+        mongo_user_to = ini.get(MONGO_DESTINATION, "mongo_user_to");
+        mongo_password_to = ini.get(MONGO_DESTINATION, "mongo_password_to").toCharArray();
+        mongo_credential_database_to = ini.get(MONGO_DESTINATION, "mongo_credential_database_to");
 
-        cloud_topic_from = ini.get("Cloud Origin", "cloud_topic_from");
-        cloud_server_from = ini.get("Cloud Origin", "cloud_server_from");
-        cloud_client_name_from = ini.get("Cloud Origin", "cloud_client_from");
-        cloud_qos_from = Integer.parseInt(ini.get("Cloud Origin", "cloud_qos_from"));
+        cloud_topic_from = ini.get(CLOUD_ORIGIN, "cloud_topic_from");
+        cloud_server_from = ini.get(CLOUD_ORIGIN, "cloud_server_from");
+        cloud_client_name_from = ini.get(CLOUD_ORIGIN, "cloud_client_from");
+        cloud_qos_from = Integer.parseInt(ini.get(CLOUD_ORIGIN, "cloud_qos_from"));
     }
 
     public void connectToMongo() {
-        MongoClient mongo_client_to = new MongoClient(new ServerAddress(mongo_address_to,mongo_port_to),
-                List.of(MongoCredential.createCredential(mongo_user_to,mongo_credential_database_to,mongo_password_to)));
+        MongoClient mongo_client_to = new MongoClient(new ServerAddress(mongo_address_to, mongo_port_to), List
+                .of(MongoCredential.createCredential(mongo_user_to, mongo_credential_database_to, mongo_password_to)));
         mongo_database_to = mongo_client_to.getDatabase(mongo_database_name_to);
     }
 
     public void connectFromMQTT() throws MqttException {
-        cloud_client_from = new MqttClient(cloud_server_from,cloud_client_name_from);
+        cloud_client_from = new MqttClient(cloud_server_from, cloud_client_name_from);
+        cloud_client_from.connect(cloud_options_from());
+    }
+
+    private MqttConnectOptions cloud_options_from() {
         MqttConnectOptions cloud_options_from = new MqttConnectOptions();
         cloud_options_from.setAutomaticReconnect(true);
         cloud_options_from.setCleanSession(true);
         cloud_options_from.setConnectionTimeout(10);
-        cloud_client_from.connect(cloud_options_from);
+        return cloud_options_from;
     }
 
     public void getCollections() {
@@ -72,16 +79,17 @@ public class MongoToMQTT {
             collections.add(mongo_database_to.getCollection(s));
     }
 
-    // TODO: Possibilidade de usar Broker para enviar dados perdidos caso programa vá abaixo
+    // TODO: Possibilidade de usar Broker para enviar dados perdidos caso programa
+    // vá abaixo
     // TODO: Temos que importar apenas registos que no maximo têm uma certa idade
     // TODO: O Migrado so deve passar a um quando enviamos para o Java
     public void findAndSendLastRecords() {
         try {
             for (MongoCollection<Document> c : collections) {
                 FindIterable<Document> records = c.find(eq("Migrado", 0));
-                for (Document record : records) {
-                    sendMessage(new MqttMessage(record.toString().getBytes()));
-                    c.updateOne(record, new BasicDBObject().append("$inc", new BasicDBObject().append("Migrado", 1)));
+                for (Document r : records) {
+                    sendMessage(new MqttMessage(r.toString().getBytes()));
+                    c.updateOne(r, new BasicDBObject().append("$inc", new BasicDBObject().append("Migrado", 1)));
                 }
             }
         } catch (MqttException | NumberFormatException e) {
@@ -102,7 +110,7 @@ public class MongoToMQTT {
         mtmqtt.connectToMongo();
         mtmqtt.connectFromMQTT();
         mtmqtt.getCollections();
-        while(true) {
+        while (true) {
             mtmqtt.findAndSendLastRecords();
             mtmqtt.sendMessage(new MqttMessage("fim".getBytes()));
             Thread.sleep(sql_delay_to);

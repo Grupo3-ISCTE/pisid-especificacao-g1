@@ -22,15 +22,6 @@ public class MMap {
     return medicoes.get(sensor);
   }
 
-  public boolean isEmpty() {
-    return (this.get("T1").isEmpty() &&
-        this.get("T2").isEmpty() &&
-        this.get("H1").isEmpty() &&
-        this.get("H2").isEmpty() &&
-        this.get("L1").isEmpty() &&
-        this.get("L2").isEmpty());
-  }
-
   public void clear() {
     this.get("T1").clear();
     this.get("T2").clear();

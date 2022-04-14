@@ -21,3 +21,4 @@ buildNumber.properties
 .idea
 mongodb-tcpbrokermqtt-dashboardcom1883
 mysqldb-tcpbrokermqtt-dashboardcom1883
+.settings
