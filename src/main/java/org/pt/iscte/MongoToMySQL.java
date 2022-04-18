@@ -118,33 +118,15 @@ public class MongoToMySQL {
         }      
     }
 
-    /* public Document stringToDocument(Document msg) {
-       // System.out.println(msg.toString());
-        String m = new String(msg.toString()).split("Document")[1].
-                replace("=", "\":\"").replace(", ","\",\"");
-        m = m.substring(1, m.length() - 1).replace("}", "\"}").replace("{", "{\"");
-        //System.out.println(m);
-        System.out.println(Document.parse(m).toString());
-        return Document.parse(m);
-      }
-      */
-
     public void findAndSendLastRecords() {
             try {
                 for(MongoCollection<Document> c : collections) {
                     FindIterable<Document> records = c.find(eq("Migrado",0));
-                    //System.out.println(records.toString());
                     for (Document record : records) {
-                        //System.out.println(record.toString());
-                       // Document cleanRecord = stringToDocument(record);
-                        //System.out.println(" Clean " + cleanRecord.toString());
                         mensagensRecebidas.add(record);
-
                     }
-
                 }
             } catch(NumberFormatException e) {
-                //System.out.println("errei");
                 e.printStackTrace();
             }
     }
@@ -251,6 +233,7 @@ public class MongoToMySQL {
                 mtmsql.removerValoresAnomalos();
                 mtmsql.removerOutliers();
                 mtmsql.criarEMandarQueries();
+                Thread.sleep(sql_delay_to);
             }
             
         } catch (Exception e) {
