@@ -73,7 +73,7 @@ public class MQTTToMySQL {
         if (!msg.toString().equals("fim")) {
           mensagensRecebidas.add(stringToDocument(msg));
         } else {
-          removerMensagensRepetidas();
+         /* removerMensagensRepetidas();
           dividirMedicoes();
           removerMedicoesInvalidas();
           removerValoresDuplicados();
@@ -81,6 +81,7 @@ public class MQTTToMySQL {
           removerValoresAnomalos();
           removerOutliers();
           criarEMandarQueries();
+          */
 
           medicoes.clear();
           mensagensRecebidas.clear();
@@ -92,13 +93,14 @@ public class MQTTToMySQL {
   }
 
   public Document stringToDocument(MqttMessage msg) {
+    System.out.println(msg.toString());
     String m = new String(msg.getPayload()).split("Document")[1].
             replace("=", "\":\"").replace(", ","\",\"");
     m = m.substring(1, m.length() - 1).replace("}", "\"}").replace("{", "{\"");
     return Document.parse(m);
   }
 
-  public void removerMensagensRepetidas() {
+ /* public void removerMensagensRepetidas() {
     List<Document> temp = new ArrayList<>();
     for (Document d : mensagensRecebidas)
       if (!temp.contains(d))
@@ -179,7 +181,7 @@ public class MQTTToMySQL {
       }
     }
   }
-
+*/
   public static void main(String[] args) {
     try {
       MQTTToMySQL mqttsql = new MQTTToMySQL(new Ini(new File("src/main/java/org/pt/iscte/config.ini")));

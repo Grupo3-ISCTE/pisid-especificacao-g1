@@ -68,7 +68,7 @@ public class MongoToMongo {
             try {
                 mongo_database_to.createCollection(s);
             } catch (Exception e) {
-                //System.out.println("Collection already created");
+                System.out.println("Collection already created");
             }
             collections.put(s,mongo_database_to.getCollection(s));
         }

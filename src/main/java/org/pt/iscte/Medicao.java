@@ -1,4 +1,4 @@
-package org.pt.iscte;
+ package org.pt.iscte;
 
 import java.sql.Timestamp;
 import org.bson.Document;
@@ -10,13 +10,16 @@ public class Medicao {
   private double leitura;
   private int migrado;
 
-  public Medicao(Document medicao) {
-    sensor = medicao.get("Sensor").toString();
-    zona = medicao.get("Zona").toString();
-    hora = Timestamp.valueOf(medicao.get("Data").toString().split("T")[0] + " "
-        + medicao.get("Data").toString().split("T")[1].split("Z")[0]);
-    leitura = Double.parseDouble(medicao.get("Medicao").toString());
-    migrado = Integer.parseInt(medicao.get("Migrado").toString());
+  public Medicao(Document medicao) throws Exception {
+      sensor = medicao.get("Sensor").toString();
+      zona = medicao.get("Zona").toString();
+      hora = Timestamp.valueOf(medicao.get("Data").toString().split("T")[0] + " "
+          + medicao.get("Data").toString().split("T")[1].split("Z")[0]);
+      leitura = Double.parseDouble(medicao.get("Medicao").toString());
+      migrado = Integer.parseInt(medicao.get("Migrado").toString());
+      //System.out.println("ERREi" + medicao.toString());
+      //TODO: handle exception
+  
   }
 
   public void setMedicao(Medicao m) {

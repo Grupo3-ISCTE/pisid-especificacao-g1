@@ -77,14 +77,18 @@ public class MongoToMQTT {
     // TODO: O Migrado so deve passar a um quando enviamos para o Java
     public void findAndSendLastRecords() {
         try {
+            System.out.println("vou enviar");
             for (MongoCollection<Document> c : collections) {
                 FindIterable<Document> records = c.find(eq("Migrado", 0));
+                //System.out.println(records.toString());
                 for (Document record : records) {
+                    System.out.println("a");
                     sendMessage(new MqttMessage(record.toString().getBytes()));
                     c.updateOne(record, new BasicDBObject().append("$inc", new BasicDBObject().append("Migrado", 1)));
                 }
             }
         } catch (MqttException | NumberFormatException e) {
+            System.out.println("nao deu");
             e.printStackTrace();
         }
     }
