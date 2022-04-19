@@ -1,0 +1,109 @@
+package org.pt.iscte;
+
+import com.mongodb.*;
+import com.mongodb.client.FindIterable;
+import com.mongodb.client.MongoCollection;
+import com.mongodb.client.MongoDatabase;
+import org.bson.Document;
+import org.ini4j.Ini;
+import java.io.File;
+import java.io.IOException;
+import java.util.*;
+
+public class MongoToMongo {
+
+    private static final String MONGO_ORIGIN = "Mongo Origin";
+    private static final String MONGO_DESTINATION = "Mongo Destination";
+
+    private final Map<String, MongoCollection<Document>> collections = new HashMap<>();
+    private String[] sensores = { "sensort1", "sensort2", "sensorh1", "sensorh2", "sensorl1", "sensorl2" };
+
+    private final String mongo_address_from;
+    private final int mongo_port_from;
+    private final String mongo_user_from;
+    private final String mongo_credential_database_from;
+    private final char[] mongo_password_from;
+    private final String mongo_database_name_from;
+    private final String mongo_collection_name_from;
+
+    private final String mongo_address_to;
+    private final int mongo_port_to;
+    private final String mongo_database_name_to;
+    private final String mongo_user_to;
+    private final char[] mongo_password_to;
+    private final String mongo_credential_database_to;
+
+    private MongoCollection<Document> mongo_collection_from;
+    private MongoDatabase mongo_database_to;
+
+    public MongoToMongo(Ini ini) {
+        mongo_address_from = ini.get(MONGO_ORIGIN, "mongo_address_from");
+        mongo_port_from = Integer.parseInt(ini.get(MONGO_ORIGIN, "mongo_port_from"));
+        mongo_user_from = ini.get(MONGO_ORIGIN, "mongo_user_from");
+        mongo_credential_database_from = ini.get(MONGO_ORIGIN, "mongo_credential_database_from");
+        mongo_password_from = ini.get(MONGO_ORIGIN, "mongo_password_from").toCharArray();
+        mongo_database_name_from = ini.get(MONGO_ORIGIN, "mongo_database_from");
+        mongo_collection_name_from = ini.get(MONGO_ORIGIN, "mongo_collection_from");
+
+        mongo_address_to = ini.get(MONGO_DESTINATION, "mongo_address_to");
+        mongo_port_to = Integer.parseInt(ini.get(MONGO_DESTINATION, "mongo_port_to"));
+        mongo_database_name_to = ini.get(MONGO_DESTINATION, "mongo_database_to");
+        mongo_user_to = ini.get(MONGO_DESTINATION, "mongo_user_to");
+        mongo_password_to = ini.get(MONGO_DESTINATION, "mongo_password_to").toCharArray();
+        mongo_credential_database_to = ini.get(MONGO_DESTINATION, "mongo_credential_database_to");
+    }
+
+    public void connectFromMongo() {
+        MongoDatabase mongo_database_from;
+        MongoClient mongo_client_from = new MongoClient(new ServerAddress(mongo_address_from, mongo_port_from),
+                List.of(MongoCredential.createCredential(mongo_user_from, mongo_credential_database_from,
+                        mongo_password_from)));
+        mongo_database_from = mongo_client_from.getDatabase(mongo_database_name_from);
+        mongo_collection_from = mongo_database_from.getCollection(mongo_collection_name_from);
+
+    }
+
+    public void connectToMongo() {
+        MongoClient mongo_client_to = new MongoClient(new ServerAddress(mongo_address_to, mongo_port_to), List
+                .of(MongoCredential.createCredential(mongo_user_to, mongo_credential_database_to, mongo_password_to)));
+        mongo_database_to = mongo_client_to.getDatabase(mongo_database_name_to);
+
+    }
+
+    public void createAndGetCollections() {
+        for (String s : sensores) {
+            try {
+                mongo_database_to.createCollection(s);
+            } catch (Exception e) {
+                // System.out.println("Collection already created");
+            }
+            collections.put(s, mongo_database_to.getCollection(s));
+        }
+    }
+
+    public void findAndInsertLastRecords() {
+        FindIterable<Document> records = mongo_collection_from.find().sort(new Document("_id", -1)).limit(6);
+        try {
+            for (Document r : records) {
+                r.append("Migrado", 0);
+                String collectionName = "sensor" + r.get("Sensor").toString().toLowerCase();
+                collections.get(collectionName).insertOne(r);
+            }
+        } catch (MongoWriteException e) {
+            // System.out.println("Duplicate key error");
+        }
+    }
+
+    public static void main(String[] args) throws IOException, InterruptedException {
+        Ini ini = new Ini(new File("src/main/java/org/pt/iscte/config.ini"));
+        MongoToMongo mtm = new MongoToMongo(ini);
+        long mongo_delay_to = Long.parseLong(ini.get(MONGO_DESTINATION, "mongo_delay_to"));
+        mtm.connectFromMongo();
+        mtm.connectToMongo();
+        mtm.createAndGetCollections();
+        while (true) {
+            mtm.findAndInsertLastRecords();
+            Thread.sleep(mongo_delay_to);
+        }
+    }
+}

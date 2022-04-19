@@ -18,5 +18,7 @@ buildNumber.properties
 
 # Adicionadas por mim
 .vscode
+.idea
 mongodb-tcpbrokermqtt-dashboardcom1883
 mysqldb-tcpbrokermqtt-dashboardcom1883
+.settings
