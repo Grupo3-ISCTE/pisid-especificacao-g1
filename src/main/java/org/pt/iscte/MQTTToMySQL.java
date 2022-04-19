@@ -20,6 +20,7 @@ public class MQTTToMySQL {
     List<Document> mensagensRecebidas = new ArrayList<>();
     MMap medicoes = new MMap();
     Map<String, Double[]> limitesSensores = new HashMap<>();
+    ArrayList<Medicao> processadas = new ArrayList<>();
 
     private final String cloud_topic_to;
     private final String cloud_server_to;
@@ -172,13 +173,34 @@ public class MQTTToMySQL {
 
     // TODO: Fazer método (ordenar por data)
     public void removerOutliers() {
-        // TODO document why this method is empty
+        try {
+            if (!medicoes.isEmpty()) {
+                DetectOutliers detetor = null;
+                for (char type : MMap.sensorTypes) {
+                    detetor = new DetectOutliers();
+//                    processadas = processadas + detetor.eliminateOutliers(medicoes.getValuesAsArray(type),1.5f);
+                    processadas.addAll(detetor.eliminateOutliers(medicoes.getValuesAsArray(type),1.5f));
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            System.err.println("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
+            System.err.println("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
+            System.err.println("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
+            System.err.println("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
+            System.err.println("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
+            System.err.println("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
+            System.err.println("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
+            System.err.println("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
+            System.err.println("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
+        }
     }
 
     // TODO: Criar sistema de controlo de ID para nao ter AI
     public void criarEMandarQueries() throws SQLException {
         for (String s : listaSensores) {
-            for (Medicao m : medicoes.get(s)) {
+//            for (Medicao m : medicoes.get(s)) {
+            for (Medicao m : processadas) {
                 String query = "INSERT INTO Medicao(IDZona, Sensor, DataHora, Leitura) VALUES(" + "'" +
                         m.getZona().split("Z")[1] + "', '" + m.getSensor() + "', '" + m.getHora()
                         + "', " + m.getLeitura() + ")";

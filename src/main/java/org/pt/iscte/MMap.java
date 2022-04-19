@@ -9,6 +9,8 @@ public class MMap {
 
     private final Map<String, ArrayList<Medicao>> medicoes = new HashMap<>();
 
+    public final static char[] sensorTypes = {'T', 'H', 'L'};
+
     public MMap() {
         medicoes.put("T1", new ArrayList<>());
         medicoes.put("T2", new ArrayList<>());
@@ -46,6 +48,17 @@ public class MMap {
         for (String s : medicoes.keySet())
             if (s.charAt(0) == sensorType)
                 return true;
+        return false;
+    }
+
+    public boolean isEmpty() {
+        if (this.get("T1").size() == 0 &&
+                this.get("T2").size() == 0 &&
+                this.get("H1").size() == 0 &&
+                this.get("H2").size() == 0 &&
+                this.get("L1").size() == 0 &&
+                this.get("L2").size() == 0)
+            return true;
         return false;
     }
 }
