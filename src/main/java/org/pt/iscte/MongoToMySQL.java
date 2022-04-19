@@ -25,27 +25,27 @@ import com.mongodb.client.MongoDatabase;
 import static com.mongodb.client.model.Filters.eq;
 
 /*
-As migrações das leituras dos sensores do MongoDB local para o 
-MySQL deverão ser realizadas com uma periodicidade de 10 segundos de 
-forma automática, tentando assim aproximar migrações em tempo real 
+As migrações das leituras dos sensores do MongoDB local para o
+MySQL deverão ser realizadas com uma periodicidade de 10 segundos de
+forma automática, tentando assim aproximar migrações em tempo real
 sem provocar um excesso de operações de migração.
-Para que seja possível assegurar os pressupostos anteriores deve existir 
+Para que seja possível assegurar os pressupostos anteriores deve existir
 apenas um main designado "DataBridge" sem threads associadas.
 Primeiramente, o programa começa por estabelecer duas conexões,
-uma com o MongoDB local e outra com o MySQL local. 
-De seguida, irá começar o processo de migração. 
-Obtém então os registos do MongoDB, processa-os efetuando os devidos 
-tratamentos e após o tratamento insere os selecionados no MySQL. 
-Cada processo de migração ocorre com uma periodicidade de 10 segundos, 
-como referido anteriormente, e, portanto, implica que o programa deverá 
+uma com o MongoDB local e outra com o MySQL local.
+De seguida, irá começar o processo de migração.
+Obtém então os registos do MongoDB, processa-os efetuando os devidos
+tratamentos e após o tratamento insere os selecionados no MySQL.
+Cada processo de migração ocorre com uma periodicidade de 10 segundos,
+como referido anteriormente, e, portanto, implica que o programa deverá
 esperar 10 segundos para efetuar um novo processo de migração.
-Nas leituras já migradas do MongoDB local para a base de dados MySql, 
-deve ser trocado o valor do campo "Migrado" de "0" para "1". 
+Nas leituras já migradas do MongoDB local para a base de dados MySql,
+deve ser trocado o valor do campo "Migrado" de "0" para "1".
 Este processo é feito de forma a garantir que não são enviados os
 mesmos registos várias vezes tanto em condições normais como de
-potenciais avarias. Adicionalmente, todos os registos que não 
-sejam migrados para o MySQL por terem sido descartados na 
-fase de tratamento de medições devem trocar o valor do campo 
+potenciais avarias. Adicionalmente, todos os registos que não
+sejam migrados para o MySQL por terem sido descartados na
+fase de tratamento de medições devem trocar o valor do campo
 "Migrado" de "0" para "1".
 */
 
@@ -57,7 +57,7 @@ public class MongoToMySQL {
     private final char[] mongo_password_to;
     private final String mongo_credential_database_to;
     private MongoDatabase mongo_database_to;
-   
+
 
     private final String sql_database_connection_from;
     private final String sql_database_user_from;
@@ -73,7 +73,7 @@ public class MongoToMySQL {
     private final List<MongoCollection<Document>> collections = new ArrayList<>();
     String[] sensores = {"sensort1", "sensort2", "sensorh1", "sensorh2", "sensorl1", "sensorl2"};
     List<Document> temp = new ArrayList<>();
-    List<Document> mensagensRecebidas = new ArrayList<>(); 
+    List<Document> mensagensRecebidas = new ArrayList<>();
     MMap medicoes = new MMap();
     String[] listaSensores = new String[] { "T1", "T2", "H1", "H2", "L1", "L2" };
     Map<String, Double[]> limitesSensores = new HashMap<>();
@@ -85,7 +85,7 @@ public class MongoToMySQL {
         mongo_user_to = ini.get("Mongo Destination", "mongo_user_to");
         mongo_password_to = ini.get("Mongo Destination", "mongo_password_to").toCharArray();
         mongo_credential_database_to = ini.get("Mongo Destination","mongo_credential_database_to");
-        
+
         sql_database_connection_from = ini.get("Mysql Origin", "sql_database_connection_from");
         sql_database_user_from = ini.get("Mysql Origin", "sql_database_user_from");
         sql_database_password_from = ini.get("Mysql Origin", "sql_database_password_from");
@@ -96,11 +96,11 @@ public class MongoToMySQL {
         sql_database_password_to = ini.get("Mysql Destination", "sql_database_password_to");
     }
 
-    
+
     public void connectToMongo() {
         MongoClient mongo_client_to = new MongoClient(new ServerAddress(mongo_address_to,mongo_port_to),
                     List.of(MongoCredential.createCredential(mongo_user_to,mongo_credential_database_to,mongo_password_to)));
-        mongo_database_to = mongo_client_to.getDatabase(mongo_database_name_to);    
+        mongo_database_to = mongo_client_to.getDatabase(mongo_database_name_to);
     }
 
     public void connectFromMySql() throws SQLException {
@@ -116,7 +116,7 @@ public class MongoToMySQL {
         System.out.println("vou fzr o get collections");
         for (String s : sensores) {
             collections.add(mongo_database_to.getCollection(s));
-        }      
+        }
     }
 
     public void findAndSendLastRecords() {
@@ -124,7 +124,7 @@ public class MongoToMySQL {
                 for(MongoCollection<Document> c : collections) {
                     FindIterable<Document> records = c.find(eq("Migrado",0));
                     for (Document record : records) {
-                        System.out.println(record.toString());
+                       // System.out.println(record.toString());
                         mensagensRecebidas.add(record);
                     }
                 }
@@ -151,31 +151,33 @@ public class MongoToMySQL {
         } catch (Exception e) {
             //TODO: handle exception
             //System.out.println("ERROU " + d.toString());
-            //mudarMigradoDocumento(d);
+            System.out.println("WEEE");
+            mudarMigradoDocumento(d);
         }
-      
+
     }
   }
 
   // usa a medicao
-  public void mudarMigradoMedicao(Medicao m) {
-    System.out.println("ENCONTREI ERRADO M" + m.toString());
-    MongoCollection<Document> c = mongo_database_to.getCollection(m.getNomeColecao());
-    FindIterable<Document> record = c.find(eq("_id",m.getId()));
-    // so vai existir um ? o .first() da null
-    for(Document r : record) {
-      c.updateOne(r,new BasicDBObject().append("$inc", new BasicDBObject().append("Migrado", 1)) );
-      System.out.println(r.toString());
+    public void mudarMigradoMedicao(Medicao m) throws Exception {
+      System.out.println(m.getNomeColecao() +  " " + m.getId());
+      MongoCollection<Document> c = mongo_database_to.getCollection(m.getNomeColecao());
+      /*FindIterable<Document> record = c.find(eq("_id ",m.getId()));
+      System.out.println(record.first());
+      for(Document r : record) {
+          c.updateOne(r,new BasicDBObject().append("$inc", new BasicDBObject().append("Migrado", 1)) );
+      }
+
+       */
     }
-  }
 
   // usa o documento
   public void mudarMigradoDocumento(Document record) {
-    System.out.println("ENCONTREI ERRADO D" + record.toString());
+    System.out.println("ENCONTREI ERRADO D");
     String nomeColecao = "sensor" + record.get("Sensor").toString().toLowerCase();
     MongoCollection<Document> c = mongo_database_to.getCollection(nomeColecao);
     c.updateOne(record,new BasicDBObject().append("$inc", new BasicDBObject().append("Migrado", 1)) );
-    System.out.println(record.toString());
+    //System.out.println(record.toString());
   }
 
   public void removerValoresDuplicados() {
@@ -190,7 +192,7 @@ public class MongoToMySQL {
               temp.get(sensor).add(medicoes.get(sensor).get(i));
             }
             else {
-             // mudarMigradoMedicao(medicoes.get(sensor).get(i)); // AQUI?
+             mudarMigradoMedicao(medicoes.get(sensor).get(i)); // AQUI?
             }
         } catch (Exception e) {
           e.printStackTrace();
@@ -216,8 +218,8 @@ public class MongoToMySQL {
         for (int i = 0; i < medicoes.get(s).size(); i++) {
           if (medicoes.get(s).get(i).getLeitura() < limitesSensores.get(s)[0]
               || medicoes.get(s).get(i).getLeitura() > limitesSensores.get(s)[1]) {
-            //mudarMigradoMedicao(medicoes.get(s).get(i)); 
-            medicoes.get(s).remove(i); 
+           // mudarMigradoMedicao(medicoes.get(s).get(i));
+            medicoes.get(s).remove(i);
             i--;
           }
         }
@@ -227,7 +229,7 @@ public class MongoToMySQL {
 
   // TODO: Fazer método (ordenar por data)
   public void removerOutliers() {
-    
+
   }
 
   //TODO: Criar sistema de controlo de ID para nao ter AI
@@ -254,9 +256,10 @@ public class MongoToMySQL {
             mtmsql.connectFromMySql();
             mtmsql.connectToMySql();
             mtmsql.getCollections();
-            mtmsql.findAndSendLastRecords();
+
             while(true) {
                  // adiciona os dados a uma estrutura
+                mtmsql.findAndSendLastRecords();
                 // percorre sempre com base nessa estrutura
                 mtmsql.removerMensagensRepetidas();
                 mtmsql.dividirMedicoes(); // remoçao dos que tem estrutura errada
@@ -265,17 +268,18 @@ public class MongoToMySQL {
                 mtmsql.removerValoresAnomalos(); // remoçao dos anomalos
                 mtmsql.removerOutliers(); // remoçao dos outliers
                 mtmsql.criarEMandarQueries();
+                // sera que deva apagar???
                 mtmsql.medicoes.clear();
                 mtmsql.mensagensRecebidas.clear();
                 Thread.sleep(sql_delay_to);
             }
 
-            
-            
+
+
         } catch (Exception e) {
             e.printStackTrace();
         }
-       
+
     }
 
 }
