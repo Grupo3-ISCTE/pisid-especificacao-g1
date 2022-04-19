@@ -73,7 +73,7 @@ public class MQTTToMySQL {
         if (!msg.toString().equals("fim")) {
           mensagensRecebidas.add(stringToDocument(msg));
         } else {
-         /* removerMensagensRepetidas();
+          removerMensagensRepetidas();
           dividirMedicoes();
           removerMedicoesInvalidas();
           removerValoresDuplicados();
@@ -81,7 +81,6 @@ public class MQTTToMySQL {
           removerValoresAnomalos();
           removerOutliers();
           criarEMandarQueries();
-          */
 
           medicoes.clear();
           mensagensRecebidas.clear();
@@ -100,7 +99,7 @@ public class MQTTToMySQL {
     return Document.parse(m);
   }
 
- /* public void removerMensagensRepetidas() {
+ public void removerMensagensRepetidas() {
     List<Document> temp = new ArrayList<>();
     for (Document d : mensagensRecebidas)
       if (!temp.contains(d))
@@ -110,9 +109,16 @@ public class MQTTToMySQL {
 
   public void dividirMedicoes() {
     for (Document d : mensagensRecebidas) {
-      Medicao m = new Medicao(d);
+      Medicao m;
+      try {
+        m = new Medicao(d);
+        medicoes.get(m.getSensor()).add(m);
+      } catch (Exception e) {
+        // TODO Auto-generated catch block
+        e.printStackTrace();
+      }
       // System.out.println(m);
-      medicoes.get(m.getSensor()).add(m);
+     
     }
   }
 
@@ -176,12 +182,12 @@ public class MQTTToMySQL {
         String query = "INSERT INTO Medicao(IDZona, Sensor, DataHora, Leitura) VALUES("+ "'" +
                 m.getZona().split("Z")[1] + "', '" + m.getSensor() + "', '" + m.getHora()
                 + "', " +m.getLeitura()+ ")";
-        sql_connection_to.prepareStatement(query).execute();
+        //sql_connection_to.prepareStatement(query).execute();
         System.out.println("MySQL query: " + query);
       }
     }
   }
-*/
+
   public static void main(String[] args) {
     try {
       MQTTToMySQL mqttsql = new MQTTToMySQL(new Ini(new File("src/main/java/org/pt/iscte/config.ini")));

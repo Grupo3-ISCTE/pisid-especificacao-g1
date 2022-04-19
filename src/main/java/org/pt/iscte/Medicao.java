@@ -9,8 +9,10 @@ public class Medicao {
   private Timestamp hora;
   private double leitura;
   private int migrado;
+  private String id;
 
   public Medicao(Document medicao) throws Exception {
+      id = medicao.get("_id").toString();
       sensor = medicao.get("Sensor").toString();
       zona = medicao.get("Zona").toString();
       hora = Timestamp.valueOf(medicao.get("Data").toString().split("T")[0] + " "
@@ -57,4 +59,14 @@ public class Medicao {
         ", Leitura: " + leitura +
         ", Migrado: " + migrado;
   }
+
+
+  public String getNomeColecao() {
+    return "sensor" + sensor.toLowerCase();
+  }
+
+  public String getId() {
+    return id;
+  }
+
 }

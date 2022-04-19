@@ -15,6 +15,7 @@ import java.util.Map;
 
 import javax.print.Doc;
 
+import com.mongodb.BasicDBObject;
 import com.mongodb.MongoClient;
 import com.mongodb.MongoCredential;
 import com.mongodb.ServerAddress;
@@ -123,6 +124,7 @@ public class MongoToMySQL {
                 for(MongoCollection<Document> c : collections) {
                     FindIterable<Document> records = c.find(eq("Migrado",0));
                     for (Document record : records) {
+                        System.out.println(record.toString());
                         mensagensRecebidas.add(record);
                     }
                 }
@@ -148,10 +150,54 @@ public class MongoToMySQL {
             medicoes.get(m.getSensor()).add(m);
         } catch (Exception e) {
             //TODO: handle exception
+            mudarMigradoDocumento(d);
         }
       
     }
   }
+
+    /*
+     public void findAndSendLastRecords() {
+        try {
+            System.out.println("vou enviar");
+            for (MongoCollection<Document> c : collections) {
+                FindIterable<Document> records = c.find(eq("Migrado", 0));
+                //System.out.println(records.toString());
+                for (Document record : records) {
+                    System.out.println("a");
+                    sendMessage(new MqttMessage(record.toString().getBytes()));
+                    c.updateOne(record, new BasicDBObject().append("$inc", new BasicDBObject().append("Migrado", 1)));
+                }
+            }
+        } catch (MqttException | NumberFormatException e) {
+            System.out.println("nao deu");
+            e.printStackTrace();
+        }
+    }
+
+     public void getCollections() {
+        for (String s : sensores)
+            collections.add(mongo_database_to.getCollection(s));
+    }
+  */
+
+  // usa a medicao
+  public void mudarMigradoMedicao(Medicao m) {
+    MongoCollection<Document> c = mongo_database_to.getCollection(m.getNomeColecao());
+    FindIterable<Document> record = c.find(eq("_id",m.getId()));
+    for(Document r : record) {
+      c.updateOne(r,new BasicDBObject().append("$inc", new BasicDBObject().append("Migrado", 1)) );
+    }
+  }
+
+  // usa o documento
+  public void mudarMigradoDocumento(Document record) {
+    String nomeColecao = "sensor" + record.get("Sensor").toString().toLowerCase();
+    MongoCollection<Document> c = mongo_database_to.getCollection(nomeColecao);
+    c.updateOne(record,new BasicDBObject().append("$inc", new BasicDBObject().append("Migrado", 1)) );
+  }
+
+
 
   public void removerValoresDuplicados() {
     MMap temp = new MMap();
@@ -188,7 +234,8 @@ public class MongoToMySQL {
         for (int i = 0; i < medicoes.get(s).size(); i++) {
           if (medicoes.get(s).get(i).getLeitura() < limitesSensores.get(s)[0]
               || medicoes.get(s).get(i).getLeitura() > limitesSensores.get(s)[1]) {
-            medicoes.get(s).remove(i);
+            //mudarMigradoMedicao(medicoes.get(s).get(i)); 
+            medicoes.get(s).remove(i); 
             i--;
           }
         }
@@ -209,7 +256,8 @@ public class MongoToMySQL {
                 m.getZona().split("Z")[1] + "', '" + m.getSensor() + "', '" + m.getHora()
                 + "', " +m.getLeitura()+ ")";
         sql_connection_to.prepareStatement(query).execute();
-        System.out.println("MySQL query: " + query);
+        mudarMigradoMedicao(m);
+        //System.out.println("MySQL query: " + query);
       }
     }
   }
@@ -227,11 +275,11 @@ public class MongoToMySQL {
             while(true) {
                 mtmsql.findAndSendLastRecords();
                 mtmsql.removerMensagensRepetidas();
-                mtmsql.dividirMedicoes();
-                mtmsql.removerValoresDuplicados();
+                mtmsql.dividirMedicoes(); // remoçao dos que tem estrutura errada
+                mtmsql.removerValoresDuplicados(); // remoçao dos duplicaods
                 mtmsql.analisarTabelaSensor();
-                mtmsql.removerValoresAnomalos();
-                mtmsql.removerOutliers();
+                mtmsql.removerValoresAnomalos(); // remoçao dos anomalos
+                mtmsql.removerOutliers(); // remoçao dos outliers
                 mtmsql.criarEMandarQueries();
                 Thread.sleep(sql_delay_to);
             }
