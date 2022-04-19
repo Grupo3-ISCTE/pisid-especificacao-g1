@@ -182,7 +182,7 @@ public class MQTTToMySQL {
         String query = "INSERT INTO Medicao(IDZona, Sensor, DataHora, Leitura) VALUES("+ "'" +
                 m.getZona().split("Z")[1] + "', '" + m.getSensor() + "', '" + m.getHora()
                 + "', " +m.getLeitura()+ ")";
-        //sql_connection_to.prepareStatement(query).execute();
+        sql_connection_to.prepareStatement(query).execute();
         System.out.println("MySQL query: " + query);
       }
     }

@@ -146,58 +146,37 @@ public class MongoToMySQL {
     for (Document d : mensagensRecebidas) {
         try {
             Medicao m = new Medicao(d);
-            System.out.println(m);
+            //System.out.println(m);
             medicoes.get(m.getSensor()).add(m);
         } catch (Exception e) {
             //TODO: handle exception
-            mudarMigradoDocumento(d);
+            //System.out.println("ERROU " + d.toString());
+            //mudarMigradoDocumento(d);
         }
       
     }
   }
 
-    /*
-     public void findAndSendLastRecords() {
-        try {
-            System.out.println("vou enviar");
-            for (MongoCollection<Document> c : collections) {
-                FindIterable<Document> records = c.find(eq("Migrado", 0));
-                //System.out.println(records.toString());
-                for (Document record : records) {
-                    System.out.println("a");
-                    sendMessage(new MqttMessage(record.toString().getBytes()));
-                    c.updateOne(record, new BasicDBObject().append("$inc", new BasicDBObject().append("Migrado", 1)));
-                }
-            }
-        } catch (MqttException | NumberFormatException e) {
-            System.out.println("nao deu");
-            e.printStackTrace();
-        }
-    }
-
-     public void getCollections() {
-        for (String s : sensores)
-            collections.add(mongo_database_to.getCollection(s));
-    }
-  */
-
   // usa a medicao
   public void mudarMigradoMedicao(Medicao m) {
+    System.out.println("ENCONTREI ERRADO M" + m.toString());
     MongoCollection<Document> c = mongo_database_to.getCollection(m.getNomeColecao());
     FindIterable<Document> record = c.find(eq("_id",m.getId()));
+    // so vai existir um ? o .first() da null
     for(Document r : record) {
       c.updateOne(r,new BasicDBObject().append("$inc", new BasicDBObject().append("Migrado", 1)) );
+      System.out.println(r.toString());
     }
   }
 
   // usa o documento
   public void mudarMigradoDocumento(Document record) {
+    System.out.println("ENCONTREI ERRADO D" + record.toString());
     String nomeColecao = "sensor" + record.get("Sensor").toString().toLowerCase();
     MongoCollection<Document> c = mongo_database_to.getCollection(nomeColecao);
     c.updateOne(record,new BasicDBObject().append("$inc", new BasicDBObject().append("Migrado", 1)) );
+    System.out.println(record.toString());
   }
-
-
 
   public void removerValoresDuplicados() {
     MMap temp = new MMap();
@@ -209,6 +188,9 @@ public class MongoToMySQL {
             if (medicoes.get(sensor).get(i).getLeitura() != medicoes.get(sensor).get(i - 1)
                 .getLeitura()) {
               temp.get(sensor).add(medicoes.get(sensor).get(i));
+            }
+            else {
+             // mudarMigradoMedicao(medicoes.get(sensor).get(i)); // AQUI?
             }
         } catch (Exception e) {
           e.printStackTrace();
@@ -255,8 +237,8 @@ public class MongoToMySQL {
         String query = "INSERT INTO Medicao(IDZona, Sensor, DataHora, Leitura) VALUES("+ "'" +
                 m.getZona().split("Z")[1] + "', '" + m.getSensor() + "', '" + m.getHora()
                 + "', " +m.getLeitura()+ ")";
-        sql_connection_to.prepareStatement(query).execute();
-        mudarMigradoMedicao(m);
+        //sql_connection_to.prepareStatement(query).execute();
+        //mudarMigradoMedicao(m);
         //System.out.println("MySQL query: " + query);
       }
     }
@@ -272,8 +254,10 @@ public class MongoToMySQL {
             mtmsql.connectFromMySql();
             mtmsql.connectToMySql();
             mtmsql.getCollections();
+            mtmsql.findAndSendLastRecords();
             while(true) {
-                mtmsql.findAndSendLastRecords();
+                 // adiciona os dados a uma estrutura
+                // percorre sempre com base nessa estrutura
                 mtmsql.removerMensagensRepetidas();
                 mtmsql.dividirMedicoes(); // remoçao dos que tem estrutura errada
                 mtmsql.removerValoresDuplicados(); // remoçao dos duplicaods
@@ -281,8 +265,12 @@ public class MongoToMySQL {
                 mtmsql.removerValoresAnomalos(); // remoçao dos anomalos
                 mtmsql.removerOutliers(); // remoçao dos outliers
                 mtmsql.criarEMandarQueries();
+                mtmsql.medicoes.clear();
+                mtmsql.mensagensRecebidas.clear();
                 Thread.sleep(sql_delay_to);
             }
+
+            
             
         } catch (Exception e) {
             e.printStackTrace();
