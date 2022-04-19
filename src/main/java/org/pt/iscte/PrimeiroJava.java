@@ -153,9 +153,9 @@ public class PrimeiroJava {
 
     public static void main(String[] args) throws IOException, MqttException {
         PrimeiroJava primeiroJava = new PrimeiroJava(new Ini(new File("src/main/java/org/pt/iscte/config.ini")));
-        primeiroJava.connectFromMongo();
+//        primeiroJava.connectFromMongo();
         primeiroJava.connectToMongo();
-        primeiroJava.mongoToMongo();
+//        primeiroJava.mongoToMongo();
         primeiroJava.connectFromMQTT();
         primeiroJava.mongoToMQTT();
     }
