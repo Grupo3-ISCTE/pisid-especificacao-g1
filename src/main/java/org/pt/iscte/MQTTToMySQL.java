@@ -171,6 +171,7 @@ public class MQTTToMySQL {
         }
     }
 
+    //JOAO TRAVASSOS
     // TODO: Fazer método (ordenar por data)
     public void removerOutliers() {
         try {
@@ -180,7 +181,8 @@ public class MQTTToMySQL {
                     detetor = new DetectOutliers();
                     // processadas = processadas +
                     // detetor.eliminateOutliers(medicoes.getValuesAsArray(type),1.5f);
-                    processadas.addAll(detetor.eliminateOutliers(medicoes.getValuesAsArray(type), 1.5f));
+                    //processadas.addAll(detetor.eliminateOutliers(medicoes.getValuesAsArray(type), 1.5f));
+                    System.out.println(type);
                 }
             }
         } catch (Exception e) {
