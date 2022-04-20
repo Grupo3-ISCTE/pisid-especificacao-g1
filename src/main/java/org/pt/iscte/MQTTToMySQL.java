@@ -87,9 +87,10 @@ public class MQTTToMySQL {
                     dividirMedicoes();
                     removerMedicoesInvalidas();
                     removerValoresDuplicados();
+                    removerValoresNaMesmaHora();
                     analisarTabelaSensor();
                     removerValoresAnomalos();
-                    //removerOutliers();
+                    // removerOutliers();
                     criarEMandarQueries();
 
                     medicoes.clear();
@@ -147,6 +148,11 @@ public class MQTTToMySQL {
         medicoes = temp;
     }
 
+    // TODO: fazer método caso o professor decida duplicar os bat
+    public void removerValoresNaMesmaHora() {
+
+    }
+
     public void analisarTabelaSensor() throws SQLException {
         Statement statement = sql_connection_from.createStatement();
         ResultSet rs = statement.executeQuery(sql_select_table_from);
@@ -171,7 +177,7 @@ public class MQTTToMySQL {
         }
     }
 
-    //JOAO TRAVASSOS
+    // JOAO TRAVASSOS
     // TODO: Fazer método (ordenar por data)
     public void removerOutliers() {
         try {
@@ -181,7 +187,8 @@ public class MQTTToMySQL {
                     detetor = new DetectOutliers();
                     // processadas = processadas +
                     // detetor.eliminateOutliers(medicoes.getValuesAsArray(type),1.5f);
-                    //processadas.addAll(detetor.eliminateOutliers(medicoes.getValuesAsArray(type), 1.5f));
+                    // processadas.addAll(detetor.eliminateOutliers(medicoes.getValuesAsArray(type),
+                    // 1.5f));
                     System.out.println(type);
                 }
             }
@@ -194,7 +201,7 @@ public class MQTTToMySQL {
     public void criarEMandarQueries() throws SQLException {
         for (String s : listaSensores) {
             for (Medicao m : medicoes.get(s)) {
-            //for (Medicao m : processadas) {
+                // for (Medicao m : processadas) {
                 String query = "INSERT INTO Medicao(IDZona, Sensor, DataHora, Leitura) VALUES(" + "'" +
                         m.getZona().split("Z")[1] + "', '" + m.getSensor() + "', '" + m.getHora()
                         + "', " + m.getLeitura() + ")";

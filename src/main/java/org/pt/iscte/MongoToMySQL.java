@@ -120,6 +120,11 @@ public class MongoToMySQL {
         medicoes = temp;
     }
 
+    // TODO: fazer método caso o professor decida duplicar os bat
+    public void removerValoresNaMesmaHora() {
+
+    }
+
     public void analisarTabelaSensor() throws SQLException {
         Statement statement = sql_connection_from.createStatement();
         ResultSet rs = statement.executeQuery(sql_select_table_from);
@@ -144,6 +149,7 @@ public class MongoToMySQL {
         }
     }
 
+    // TODO: nao sei calcular os quartis
     public void removerOutliers() {
         try {
             // if (!medicoes.isEmpty()) {
@@ -198,6 +204,7 @@ public class MongoToMySQL {
             while (true) {
                 mongoToMySQL.getMedicoesFromMongo();
                 mongoToMySQL.removerValoresDuplicados();
+                mongoToMySQL.removerValoresNaMesmaHora();
                 mongoToMySQL.analisarTabelaSensor();
                 mongoToMySQL.removerValoresAnomalos();
                 mongoToMySQL.removerOutliers();
