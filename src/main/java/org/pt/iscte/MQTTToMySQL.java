@@ -16,12 +16,6 @@ public class MQTTToMySQL {
     private static final String MYSQL_DESTINATION = "Mysql Destination";
     private static final String CLOUD_DESTINATION = "Cloud Destination";
 
-    String[] listaSensores = new String[] { "T1", "T2", "H1", "H2", "L1", "L2" };
-    List<Document> mensagensRecebidas = new ArrayList<>();
-    MMap medicoes = new MMap();
-    Map<String, Double[]> limitesSensores = new HashMap<>();
-    ArrayList<Medicao> processadas = new ArrayList<>();
-
     private final String cloud_topic_to;
     private final String cloud_server_to;
     private final String cloud_client_name_to;
@@ -37,6 +31,12 @@ public class MQTTToMySQL {
     private final String sql_database_user_to;
     private final String sql_database_password_to;
     private Connection sql_connection_to;
+
+    String[] listaSensores = new String[] { "T1", "T2", "H1", "H2", "L1", "L2" };
+    List<Document> mensagensRecebidas = new ArrayList<>();
+    MMap medicoes = new MMap();
+    Map<String, Double[]> limitesSensores = new HashMap<>();
+    ArrayList<Medicao> processadas = new ArrayList<>();
 
     public MQTTToMySQL(Ini ini) {
         cloud_topic_to = ini.get(CLOUD_DESTINATION, "cloud_topic_to");
@@ -178,28 +178,20 @@ public class MQTTToMySQL {
                 DetectOutliers detetor = null;
                 for (char type : MMap.sensorTypes) {
                     detetor = new DetectOutliers();
-//                    processadas = processadas + detetor.eliminateOutliers(medicoes.getValuesAsArray(type),1.5f);
-                    processadas.addAll(detetor.eliminateOutliers(medicoes.getValuesAsArray(type),1.5f));
+                    // processadas = processadas +
+                    // detetor.eliminateOutliers(medicoes.getValuesAsArray(type),1.5f);
+                    processadas.addAll(detetor.eliminateOutliers(medicoes.getValuesAsArray(type), 1.5f));
                 }
             }
         } catch (Exception e) {
             e.printStackTrace();
-            System.err.println("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
-            System.err.println("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
-            System.err.println("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
-            System.err.println("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
-            System.err.println("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
-            System.err.println("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
-            System.err.println("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
-            System.err.println("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
-            System.err.println("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
         }
     }
 
     // TODO: Criar sistema de controlo de ID para nao ter AI
     public void criarEMandarQueries() throws SQLException {
         for (String s : listaSensores) {
-//            for (Medicao m : medicoes.get(s)) {
+            // for (Medicao m : medicoes.get(s)) {
             for (Medicao m : processadas) {
                 String query = "INSERT INTO Medicao(IDZona, Sensor, DataHora, Leitura) VALUES(" + "'" +
                         m.getZona().split("Z")[1] + "', '" + m.getSensor() + "', '" + m.getHora()
