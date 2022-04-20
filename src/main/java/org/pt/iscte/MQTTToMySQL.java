@@ -89,7 +89,7 @@ public class MQTTToMySQL {
                     removerValoresDuplicados();
                     analisarTabelaSensor();
                     removerValoresAnomalos();
-                    removerOutliers();
+                    //removerOutliers();
                     criarEMandarQueries();
 
                     medicoes.clear();
@@ -193,8 +193,8 @@ public class MQTTToMySQL {
     // TODO: Criar sistema de controlo de ID para nao ter AI
     public void criarEMandarQueries() throws SQLException {
         for (String s : listaSensores) {
-            // for (Medicao m : medicoes.get(s)) {
-            for (Medicao m : processadas) {
+            for (Medicao m : medicoes.get(s)) {
+            //for (Medicao m : processadas) {
                 String query = "INSERT INTO Medicao(IDZona, Sensor, DataHora, Leitura) VALUES(" + "'" +
                         m.getZona().split("Z")[1] + "', '" + m.getSensor() + "', '" + m.getHora()
                         + "', " + m.getLeitura() + ")";

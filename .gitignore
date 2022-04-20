@@ -22,3 +22,4 @@ buildNumber.properties
 mongodb-tcpbrokermqtt-dashboardcom1883
 mysqldb-tcpbrokermqtt-dashboardcom1883
 .settings
+src/main/java/org/pt/iscte/config.ini
