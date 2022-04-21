@@ -40,7 +40,7 @@ public class MongoToMySQL {
     private Connection sql_connection_to;
 
     private final List<MongoCollection<Document>> collections = new ArrayList<>();
-    String[] sensores = new String[] { "T1", "T2", "H1", "H2", "L1", "L2" };
+    String[] sensores;
     MMap medicoes = new MMap();
     Map<String, Double[]> limitesSensores = new HashMap<>();
 
@@ -60,6 +60,8 @@ public class MongoToMySQL {
         sql_database_connection_to = ini.get(MYSQL_DESTINATION, "sql_database_connection_to");
         sql_database_user_to = ini.get(MYSQL_DESTINATION, "sql_database_user_to");
         sql_database_password_to = ini.get(MYSQL_DESTINATION, "sql_database_password_to");
+
+        sensores = ini.get("Mongo Origin", "mongo_sensores_from").toString().split(",");
     }
 
     public void connectToMongo() {
@@ -81,24 +83,18 @@ public class MongoToMySQL {
 
     public void getCollections() {
         for (String s : sensores)
-            collections.add(mongo_database_to.getCollection(s));
+            collections.add(mongo_database_to.getCollection("sensor" + s.toLowerCase()));
     }
 
-    public void getMedicoesFromMongo() {
+    public void findAndSendLastRecords() {
         for (MongoCollection<Document> c : collections) {
             FindIterable<Document> records = c.find(eq("Migrado", 0));
             for (Document r : records) {
                 Medicao m = new Medicao(r);
-                // System.out.println(m);
                 medicoes.get(m.getSensor()).add(m);
                 c.updateOne(r, new BasicDBObject().append("$inc", new BasicDBObject().append("Migrado", 1)));
             }
         }
-    }
-
-    // TODO: Fazer método
-    public void removerMedicoesInvalidas() {
-
     }
 
     public void removerValoresDuplicados() {
@@ -194,15 +190,15 @@ public class MongoToMySQL {
     public static void main(String args[]) {
         try {
             Ini ini = new Ini(new File("src/main/java/org/pt/iscte/config.ini"));
-            MongoToMySQL mongoToMySQL = new MongoToMySQL(ini);
             int sql_delay_to = Integer.parseInt(ini.get("Mysql Destination", "sql_delay_to"));
 
+            MongoToMySQL mongoToMySQL = new MongoToMySQL(ini);
             mongoToMySQL.connectToMongo();
             mongoToMySQL.connectFromMySql();
             mongoToMySQL.connectToMySql();
             mongoToMySQL.getCollections();
             while (true) {
-                mongoToMySQL.getMedicoesFromMongo();
+                mongoToMySQL.findAndSendLastRecords();
                 mongoToMySQL.removerValoresDuplicados();
                 mongoToMySQL.removerValoresNaMesmaHora();
                 mongoToMySQL.analisarTabelaSensor();

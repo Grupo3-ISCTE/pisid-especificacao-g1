@@ -32,7 +32,7 @@ public class MQTTToMySQL {
     private final String sql_database_password_to;
     private Connection sql_connection_to;
 
-    String[] listaSensores = new String[] { "T1", "T2", "H1", "H2", "L1", "L2" };
+    String[] sensores;
     List<Document> mensagensRecebidas = new ArrayList<>();
     MMap medicoes = new MMap();
     Map<String, Double[]> limitesSensores = new HashMap<>();
@@ -51,6 +51,8 @@ public class MQTTToMySQL {
         sql_database_connection_to = ini.get(MYSQL_DESTINATION, "sql_database_connection_to");
         sql_database_user_to = ini.get(MYSQL_DESTINATION, "sql_database_user_to");
         sql_database_password_to = ini.get(MYSQL_DESTINATION, "sql_database_password_to");
+
+        sensores = ini.get("Mongo Origin", "mongo_sensores_from").toString().split(",");
     }
 
     public void connectToMQTT() throws MqttException {
@@ -85,7 +87,6 @@ public class MQTTToMySQL {
                 } else {
                     removerMensagensRepetidas();
                     dividirMedicoes();
-                    removerMedicoesInvalidas();
                     removerValoresDuplicados();
                     removerValoresNaMesmaHora();
                     analisarTabelaSensor();
@@ -124,14 +125,9 @@ public class MQTTToMySQL {
         }
     }
 
-    // TODO: Fazer método
-    public void removerMedicoesInvalidas() {
-        // TODO document why this method is empty
-    }
-
     public void removerValoresDuplicados() {
         MMap temp = new MMap();
-        for (String sensor : listaSensores) {
+        for (String sensor : sensores) {
             if (!medicoes.get(sensor).isEmpty()) {
                 temp.get(sensor).add(medicoes.get(sensor).get(0));
                 try {
@@ -164,7 +160,7 @@ public class MQTTToMySQL {
 
     // TODO: Enviar alertas cinzentos
     public void removerValoresAnomalos() {
-        for (String s : listaSensores) {
+        for (String s : sensores) {
             if (!medicoes.get(s).isEmpty()) {
                 for (int i = 0; i < medicoes.get(s).size(); i++) {
                     if (medicoes.get(s).get(i).getLeitura() < limitesSensores.get(s)[0]
@@ -199,7 +195,7 @@ public class MQTTToMySQL {
 
     // TODO: Criar sistema de controlo de ID para nao ter AI
     public void criarEMandarQueries() throws SQLException {
-        for (String s : listaSensores) {
+        for (String s : sensores) {
             for (Medicao m : medicoes.get(s)) {
                 // for (Medicao m : processadas) {
                 String query = "INSERT INTO Medicao(IDZona, Sensor, DataHora, Leitura) VALUES(" + "'" +
