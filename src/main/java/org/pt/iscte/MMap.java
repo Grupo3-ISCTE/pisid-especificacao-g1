@@ -1,9 +1,7 @@
 package org.pt.iscte;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.sql.SQLOutput;
+import java.util.*;
 
 public class MMap {
 
@@ -33,23 +31,23 @@ public class MMap {
         this.get("L2").clear();
     }
 
-    public ArrayList<Medicao> getValuesAsArray(char sensorType) {
-        if (containsSensorType(sensorType))
-            return joinLists(medicoes.get(sensorType + "1"), medicoes.get(sensorType + "2"));
-        throw new RuntimeException();
+    public Collection<ArrayList<Medicao>> getValuesLists(){
+        return medicoes.values();
     }
 
-    private ArrayList<Medicao> joinLists(ArrayList<Medicao> list1, ArrayList<Medicao> list2) {
-        list1.addAll(list2);
-        return list1;
-    }
+//    public ArrayList<Medicao> getValuesAsArray(char sensorType) {
+//        if (containsSensorType(sensorType)) {
+////            System.out.println(medicoes.get(sensorType + "1"));
+////            System.out.println(medicoes.get(sensorType + "2"));
+//            return joinLists(medicoes.get(sensorType + "1"), medicoes.get(sensorType + "2"));
+//        }
+//        throw new RuntimeException();
+//    }
 
-    public boolean containsSensorType(char sensorType) {
-        for (String s : medicoes.keySet())
-            if (s.charAt(0) == sensorType)
-                return true;
-        return false;
-    }
+//    private ArrayList<Medicao> joinLists(ArrayList<Medicao> list1, ArrayList<Medicao> list2) {
+//        list1.addAll(list2);
+//        return list1;
+//    }
 
     public boolean isEmpty() {
         if (this.get("T1").size() == 0 &&
@@ -60,5 +58,17 @@ public class MMap {
                 this.get("L2").size() == 0)
             return true;
         return false;
+    }
+
+    @Override
+    public String toString() {
+        return "MMap{" +
+                "T1: "+this.get("T1").toString()+
+                "T2: "+this.get("T2").toString()+
+                "H1: "+this.get("H1").toString()+
+                "H2: "+this.get("H2").toString()+
+                "L1: "+this.get("L1").toString()+
+                "L2: "+this.get("L2").toString()+
+                '}';
     }
 }

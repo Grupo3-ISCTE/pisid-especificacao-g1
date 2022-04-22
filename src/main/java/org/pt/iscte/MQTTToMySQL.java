@@ -3,12 +3,12 @@ package org.pt.iscte;
 import org.bson.Document;
 import org.eclipse.paho.client.mqttv3.*;
 import org.ini4j.Ini;
+
+import javax.swing.*;
 import java.io.File;
+import java.rmi.ServerError;
 import java.sql.*;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 public class MQTTToMySQL {
 
@@ -32,11 +32,13 @@ public class MQTTToMySQL {
     private final String sql_database_password_to;
     private Connection sql_connection_to;
 
-    String[] listaSensores = new String[] { "T1", "T2", "H1", "H2", "L1", "L2" };
+    String[] listaSensores = new String[]{"T1", "T2", "H1", "H2", "L1", "L2"};
     List<Document> mensagensRecebidas = new ArrayList<>();
     MMap medicoes = new MMap();
     Map<String, Double[]> limitesSensores = new HashMap<>();
     ArrayList<Medicao> processadas = new ArrayList<>();
+
+    private final int MIN_VALUES = 3;
 
     public MQTTToMySQL(Ini ini) {
         cloud_topic_to = ini.get(CLOUD_DESTINATION, "cloud_topic_to");
@@ -89,11 +91,15 @@ public class MQTTToMySQL {
                     removerValoresDuplicados();
                     analisarTabelaSensor();
                     removerValoresAnomalos();
-                    removerOutliers();
+                    System.err.println("inciar outliers");
+                    //TODO PROBLEMA E Q TEM DE SER MAIOR QUE 3 PARA NAO DAR MERDA. NAO CONSEGUIMOS DISTINGUIR QUEM SAO OS CERTOS OU ERRADOS COM POUCOS
+                      removerOutliers();
+                    System.err.println("sai outliers");
                     criarEMandarQueries();
 
                     medicoes.clear();
                     mensagensRecebidas.clear();
+                    processadas.clear();
                 }
             });
         } catch (MqttException e) {
@@ -152,7 +158,7 @@ public class MQTTToMySQL {
         ResultSet rs = statement.executeQuery(sql_select_table_from);
         while (rs.next()) {
             limitesSensores.put(rs.getString(2) + rs.getInt(1),
-                    new Double[] { rs.getDouble(3), rs.getDouble(4) });
+                    new Double[]{rs.getDouble(3), rs.getDouble(4)});
         }
     }
 
@@ -176,13 +182,30 @@ public class MQTTToMySQL {
     public void removerOutliers() {
         try {
             if (!medicoes.isEmpty()) {
-                DetectOutliers detetor = null;
-                for (char type : MMap.sensorTypes) {
-                    detetor = new DetectOutliers();
-                    // processadas = processadas +
-                    // detetor.eliminateOutliers(medicoes.getValuesAsArray(type),1.5f);
-                    //processadas.addAll(detetor.eliminateOutliers(medicoes.getValuesAsArray(type), 1.5f));
-                    System.out.println(type);
+                System.out.println(medicoes.getValuesLists());
+                for (ArrayList<Medicao> valores : medicoes.getValuesLists()) {
+                    if (valores.size() > MIN_VALUES) {
+
+                        ArrayList<Medicao> proc = new ArrayList<Medicao>() {};
+                        System.out.println("valores: " + valores);
+                        Collections.sort(valores);
+
+                        double Q1 = calculteMedian(valores.subList(0, valores.size() / 2));
+                        double Q3 = calculteMedian(valores.subList(valores.size() / 2 + 1, valores.size()));
+                        double Aq = Q3 - Q1;
+                        System.out.println("Q1: "+Q1);
+                        System.out.println("Q3: "+Q3);
+                        System.out.println("Aq: "+Aq);
+
+                        for (Medicao medicao : valores) {
+//                            System.out.println((medicao.getLeitura() >= Q1 - 1.5 * Aq) +" : "+(medicao.getLeitura() <= Q3 + 1.5 * Aq));
+                            if (medicao.getLeitura() >= Q1 - 1.5 * Aq && medicao.getLeitura() <= Q3 + 1.5 * Aq) {
+                                proc.add(medicao);
+                            }
+                        }
+
+                        System.out.println("Processadas: " + proc);
+                    }
                 }
             }
         } catch (Exception e) {
@@ -190,11 +213,18 @@ public class MQTTToMySQL {
         }
     }
 
+    private static double calculteMedian(List<Medicao> values) {
+        if (values.size() % 2 == 0)
+            return (values.get(values.size() / 2).getLeitura() + values.get(values.size() / 2 - 1).getLeitura()) / 2;
+        else
+            return values.get(values.size() / 2).getLeitura();
+    }
+
     // TODO: Criar sistema de controlo de ID para nao ter AI
     public void criarEMandarQueries() throws SQLException {
         for (String s : listaSensores) {
-            // for (Medicao m : medicoes.get(s)) {
-            for (Medicao m : processadas) {
+            for (Medicao m : medicoes.get(s)) {
+//            for (Medicao m : processadas) {
                 String query = "INSERT INTO Medicao(IDZona, Sensor, DataHora, Leitura) VALUES(" + "'" +
                         m.getZona().split("Z")[1] + "', '" + m.getSensor() + "', '" + m.getHora()
                         + "', " + m.getLeitura() + ")";
@@ -210,6 +240,7 @@ public class MQTTToMySQL {
             mqttsql.connectToMQTT();
             mqttsql.connectFromMySql();
             mqttsql.connectToMySql();
+            System.err.println("init funciton");
             mqttsql.receiveAndSendLastRecords();
         } catch (Exception e) {
             e.printStackTrace();
