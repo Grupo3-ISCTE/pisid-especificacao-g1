@@ -11,20 +11,24 @@ import org.bson.Document;
 
 import javax.print.Doc;
 
-public class Medicao implements Comparable<Medicao>{
-    private final String sensor;
-    private final String zona;
-    private final Timestamp hora;
-    private final double leitura;
-    private final int migrado;
+public class Medicao implements Comparable<Medicao> {
+    private  String sensor;
+    private  String zona;
+    private  Timestamp hora;
+    private  double leitura;
+    private  int migrado;
 
     public Medicao(Document medicao) {
-        sensor = medicao.get("Sensor").toString();
-        zona = medicao.get("Zona").toString();
-        hora = Timestamp.valueOf(medicao.get("Data").toString().split("T")[0] + " "
-                + medicao.get("Data").toString().split("T")[1].split("Z")[0]);
-        leitura = Double.parseDouble(medicao.get("Medicao").toString());
-        migrado = Integer.parseInt(medicao.get("Migrado").toString());
+        try {
+            sensor = medicao.get("Sensor").toString();
+            zona = medicao.get("Zona").toString();
+            hora = Timestamp.valueOf(medicao.get("Data").toString().split("T")[0] + " "
+                    + medicao.get("Data").toString().split("T")[1].split("Z")[0]);
+            leitura = Double.parseDouble(medicao.get("Medicao").toString());
+            migrado = Integer.parseInt(medicao.get("Migrado").toString());
+        } catch (Exception e) {
+            // System.out.println("Medicao inválida");
+        }
     }
 
     public String getSensor() {
@@ -44,7 +48,6 @@ public class Medicao implements Comparable<Medicao>{
     }
 
 
-
     public String toString() {
         return "Sensor: " + sensor +
 //                ", Zona: " + zona +
@@ -57,5 +60,4 @@ public class Medicao implements Comparable<Medicao>{
     public int compareTo(Medicao otherMedicao) {
         return Double.compare(getLeitura(), otherMedicao.getLeitura());
     }
-
 }

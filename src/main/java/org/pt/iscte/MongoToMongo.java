@@ -16,7 +16,7 @@ public class MongoToMongo {
     private static final String MONGO_DESTINATION = "Mongo Destination";
 
     private final Map<String, MongoCollection<Document>> collections = new HashMap<>();
-    private String[] sensores = { "sensort1", "sensort2", "sensorh1", "sensorh2", "sensorl1", "sensorl2" };
+    private String[] sensores;
 
     private final String mongo_address_from;
     private final int mongo_port_from;
@@ -51,6 +51,8 @@ public class MongoToMongo {
         mongo_user_to = ini.get(MONGO_DESTINATION, "mongo_user_to");
         mongo_password_to = ini.get(MONGO_DESTINATION, "mongo_password_to").toCharArray();
         mongo_credential_database_to = ini.get(MONGO_DESTINATION, "mongo_credential_database_to");
+
+        sensores = ini.get(MONGO_ORIGIN, "mongo_sensores_from").toString().split(",");
     }
 
     public void connectFromMongo() {
@@ -73,11 +75,11 @@ public class MongoToMongo {
     public void createAndGetCollections() {
         for (String s : sensores) {
             try {
-                mongo_database_to.createCollection(s);
+                mongo_database_to.createCollection("sensor" + s.toLowerCase());
             } catch (Exception e) {
                 // System.out.println("Collection already created");
             }
-            collections.put(s, mongo_database_to.getCollection(s));
+            collections.put("sensor" + s.toLowerCase(), mongo_database_to.getCollection("sensor" + s.toLowerCase()));
         }
     }
 
@@ -88,6 +90,7 @@ public class MongoToMongo {
                 r.append("Migrado", 0);
                 String collectionName = "sensor" + r.get("Sensor").toString().toLowerCase();
                 collections.get(collectionName).insertOne(r);
+                System.out.println(r);
             }
         } catch (MongoWriteException e) {
             // System.out.println("Duplicate key error");

@@ -25,7 +25,7 @@ public class MongoToMQTT {
     private static final String MONGO_DESTINATION = "Mongo Destination";
 
     private final List<MongoCollection<Document>> collections = new ArrayList<>();
-    String[] sensores = { "sensort1", "sensort2", "sensorh1", "sensorh2", "sensorl1", "sensorl2" };
+    String[] sensores;
 
     private final String mongo_address_to;
     private final int mongo_port_to;
@@ -53,6 +53,8 @@ public class MongoToMQTT {
         cloud_server_from = ini.get(CLOUD_ORIGIN, "cloud_server_from");
         cloud_client_name_from = ini.get(CLOUD_ORIGIN, "cloud_client_from");
         cloud_qos_from = Integer.parseInt(ini.get(CLOUD_ORIGIN, "cloud_qos_from"));
+
+        sensores = ini.get("Mongo Origin", "mongo_sensores_from").toString().split(",");
     }
 
     public void connectToMongo() {
@@ -76,11 +78,9 @@ public class MongoToMQTT {
 
     public void getCollections() {
         for (String s : sensores)
-            collections.add(mongo_database_to.getCollection(s));
+            collections.add(mongo_database_to.getCollection("sensor" + s.toLowerCase()));
     }
 
-    // TODO: Possibilidade de usar Broker para enviar dados perdidos caso programa
-    // vá abaixo
     // TODO: Temos que importar apenas registos que no maximo têm uma certa idade
     // TODO: O Migrado so deve passar a um quando enviamos para o Java
     public void findAndSendLastRecords() {
@@ -90,6 +90,7 @@ public class MongoToMQTT {
                 for (Document r : records) {
                     sendMessage(new MqttMessage(r.toString().getBytes()));
                     c.updateOne(r, new BasicDBObject().append("$inc", new BasicDBObject().append("Migrado", 1)));
+                    System.out.println(r);
                 }
             }
         } catch (MqttException | NumberFormatException e) {
