@@ -14,6 +14,9 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.sql.Timestamp;
+import java.util.concurrent.TimeUnit;
+import java.util.Date;
 
 import static com.mongodb.client.model.Filters.eq;
 
@@ -23,6 +26,7 @@ public class MongoToMQTT {
 
     private static final String CLOUD_ORIGIN = "Cloud Origin";
     private static final String MONGO_DESTINATION = "Mongo Destination";
+    private static final int PAST_MINUTES_FOR_MONGO_FIND = 1;
 
     private final List<MongoCollection<Document>> collections = new ArrayList<>();
     String[] sensores;
@@ -81,12 +85,25 @@ public class MongoToMQTT {
             collections.add(mongo_database_to.getCollection("sensor" + s.toLowerCase()));
     }
 
-    // TODO: Temos que importar apenas registos que no maximo têm uma certa idade
+    private BasicDBObject getCriteriaForMongoSearch() {
+        String[] date = new Timestamp(new Date(System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(-PAST_MINUTES_FOR_MONGO_FIND)).getTime()).toString().split(" ");
+        date[1] = date[1].split("\\.")[0];
+        String mongoDate = date[0] + "T" + date[1] + "Z";
+
+        BasicDBObject criteria = new BasicDBObject();
+        criteria.append("Migrado", 0);
+        criteria.append("Data", new BasicDBObject("$gt", mongoDate));
+
+        return criteria;
+    }
+
     // TODO: O Migrado so deve passar a um quando enviamos para o Java
     public void findAndSendLastRecords() {
         try {
             for (MongoCollection<Document> c : collections) {
-                FindIterable<Document> records = c.find(eq("Migrado", 0));
+
+                FindIterable<Document> records = c.find(getCriteriaForMongoSearch());
+
                 for (Document r : records) {
                     sendMessage(new MqttMessage(r.toString().getBytes()));
                     c.updateOne(r, new BasicDBObject().append("$inc", new BasicDBObject().append("Migrado", 1)));

@@ -4,9 +4,7 @@ import org.bson.Document;
 import org.eclipse.paho.client.mqttv3.*;
 import org.ini4j.Ini;
 
-import javax.swing.*;
 import java.io.File;
-import java.rmi.ServerError;
 import java.sql.*;
 import java.util.*;
 
@@ -90,18 +88,18 @@ public class MQTTToMySQL {
                     if (!msg.toString().equals("fim")) {
                         mensagensRecebidas.add(stringToDocument(msg));
                     } else {
-                        removerMensagensRepetidas();
-                        dividirMedicoes();
-                        removerValoresDuplicados();
+                        removeRepeatedMessages();
+                        splitRecords();
+                        removeDuplicatedValues();
                         removerValoresNaMesmaHora();
-                        analisarTabelaSensor();
-                        removerValoresAnomalos();
+                        getSensorsLimits();
+                        removeAnomalousValues();
                         // System.err.println("inciar outliers");
                         // //TODO PROBLEMA E Q TEM DE SER MAIOR QUE 3 PARA NAO DAR MERDA. NAO
                         // CONSEGUIMOS DISTINGUIR QUEM SAO OS CERTOS OU ERRADOS COM POUCOS
                         // removerOutliers();
                         // System.err.println("sai outliers");
-                        criarEMandarQueries();
+                        sendRecordsToMySQL();
 
                         medicoes.clear();
                         mensagensRecebidas.clear();
@@ -120,23 +118,20 @@ public class MQTTToMySQL {
         return Document.parse(m);
     }
 
-    public void removerMensagensRepetidas() {
-        List<Document> temp = new ArrayList<>();
-        for (Document d : mensagensRecebidas)
-            if (!temp.contains(d))
-                temp.add(d);
-        mensagensRecebidas = temp;
+    public void removeRepeatedMessages() {
+        Set<Document> set = new LinkedHashSet<>(mensagensRecebidas);
+        mensagensRecebidas.clear();
+        mensagensRecebidas.addAll(set);
     }
 
-    public void dividirMedicoes() {
+    public void splitRecords() {
         for (Document d : mensagensRecebidas) {
             Medicao m = new Medicao(d);
-            // System.out.println(m);
             medicoes.get(m.getSensor()).add(m);
         }
     }
 
-    public void removerValoresDuplicados() {
+    public void removeDuplicatedValues() {
         MMap temp = new MMap();
         for (String sensor : sensores) {
             if (!medicoes.get(sensor).isEmpty()) {
@@ -157,10 +152,9 @@ public class MQTTToMySQL {
 
     // TODO: fazer método caso o professor decida duplicar os bat
     public void removerValoresNaMesmaHora() {
-
     }
 
-    public void analisarTabelaSensor() throws SQLException {
+    public void getSensorsLimits() throws SQLException {
         Statement statement = sql_connection_from.createStatement();
         ResultSet rs = statement.executeQuery(sql_select_table_from);
         while (rs.next()) {
@@ -170,7 +164,7 @@ public class MQTTToMySQL {
     }
 
     // TODO: Enviar alertas cinzentos
-    public void removerValoresAnomalos() {
+    public void removeAnomalousValues() {
         for (String s : sensores) {
             if (!medicoes.get(s).isEmpty()) {
                 for (int i = 0; i < medicoes.get(s).size(); i++) {
@@ -230,7 +224,7 @@ public class MQTTToMySQL {
     // }
 
     // TODO: Criar sistema de controlo de ID para nao ter AI
-    public void criarEMandarQueries() throws SQLException {
+    public void sendRecordsToMySQL() throws SQLException {
         for (String s : sensores) {
             for (Medicao m : medicoes.get(s)) {
                 // for (Medicao m : processadas) {

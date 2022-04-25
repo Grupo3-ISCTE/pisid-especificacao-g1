@@ -7,7 +7,7 @@ public class MMap {
 
     private final Map<String, ArrayList<Medicao>> medicoes = new HashMap<>();
 
-    public final static char[] sensorTypes = {'T', 'H', 'L'};
+    //public final static char[] sensorTypes = {'T', 'H', 'L'};
 
     public MMap() {
         medicoes.put("T1", new ArrayList<>());
