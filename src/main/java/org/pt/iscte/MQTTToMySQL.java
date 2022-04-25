@@ -30,14 +30,14 @@ public class MQTTToMySQL {
     private final String sql_database_password_to;
     private Connection sql_connection_to;
 
-    String[] sensores;
+    String[] sensors;
 
-    List<Document> mensagensRecebidas = new ArrayList<>();
-    MMap medicoes = new MMap();
-    Map<String, Double[]> limitesSensores = new HashMap<>();
+    List<Document> receivedMessages = new ArrayList<>();
+    MMap records = new MMap();
+    Map<String, Double[]> sensorsLimits = new HashMap<>();
+
     ArrayList<Medicao> processadas = new ArrayList<>();
-
-    private final int MIN_VALUES = 3;
+    private static final int MIN_VALUES = 3;
 
     public MQTTToMySQL(Ini ini) {
         cloud_topic_to = ini.get(CLOUD_DESTINATION, "cloud_topic_to");
@@ -53,7 +53,7 @@ public class MQTTToMySQL {
         sql_database_user_to = ini.get(MYSQL_DESTINATION, "sql_database_user_to");
         sql_database_password_to = ini.get(MYSQL_DESTINATION, "sql_database_password_to");
 
-        sensores = ini.get("Mongo Origin", "mongo_sensores_from").toString().split(",");
+        sensors = ini.get("Mongo Origin", "mongo_sensores_from").toString().split(",");
     }
 
     public void connectToMQTT() throws MqttException {
@@ -86,12 +86,12 @@ public class MQTTToMySQL {
 
                 cloud_client_to.subscribe(cloud_topic_to, (topic, msg) -> {
                     if (!msg.toString().equals("fim")) {
-                        mensagensRecebidas.add(stringToDocument(msg));
+                        receivedMessages.add(stringToDocument(msg));
                     } else {
                         removeRepeatedMessages();
                         splitRecords();
                         removeDuplicatedValues();
-                        removerValoresNaMesmaHora();
+                        // removerValoresNaMesmaHora();
                         getSensorsLimits();
                         removeAnomalousValues();
                         // System.err.println("inciar outliers");
@@ -101,8 +101,8 @@ public class MQTTToMySQL {
                         // System.err.println("sai outliers");
                         sendRecordsToMySQL();
 
-                        medicoes.clear();
-                        mensagensRecebidas.clear();
+                        records.clear();
+                        receivedMessages.clear();
                         // processadas.clear();
                     }
                 });
@@ -119,35 +119,35 @@ public class MQTTToMySQL {
     }
 
     public void removeRepeatedMessages() {
-        Set<Document> set = new LinkedHashSet<>(mensagensRecebidas);
-        mensagensRecebidas.clear();
-        mensagensRecebidas.addAll(set);
+        Set<Document> set = new LinkedHashSet<>(receivedMessages);
+        receivedMessages.clear();
+        receivedMessages.addAll(set);
     }
 
     public void splitRecords() {
-        for (Document d : mensagensRecebidas) {
+        for (Document d : receivedMessages) {
             Medicao m = new Medicao(d);
-            medicoes.get(m.getSensor()).add(m);
+            records.get(m.getSensor()).add(m);
         }
     }
 
     public void removeDuplicatedValues() {
         MMap temp = new MMap();
-        for (String sensor : sensores) {
-            if (!medicoes.get(sensor).isEmpty()) {
-                temp.get(sensor).add(medicoes.get(sensor).get(0));
+        for (String sensor : sensors) {
+            if (!records.get(sensor).isEmpty()) {
+                temp.get(sensor).add(records.get(sensor).get(0));
                 try {
-                    for (int i = 1; i < medicoes.get(sensor).size(); i++)
-                        if (medicoes.get(sensor).get(i).getLeitura() != medicoes.get(sensor).get(i - 1)
+                    for (int i = 1; i < records.get(sensor).size(); i++)
+                        if (records.get(sensor).get(i).getLeitura() != records.get(sensor).get(i - 1)
                                 .getLeitura()) {
-                            temp.get(sensor).add(medicoes.get(sensor).get(i));
+                            temp.get(sensor).add(records.get(sensor).get(i));
                         }
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
             }
         }
-        medicoes = temp;
+        records = temp;
     }
 
     // TODO: fazer método caso o professor decida duplicar os bat
@@ -158,19 +158,19 @@ public class MQTTToMySQL {
         Statement statement = sql_connection_from.createStatement();
         ResultSet rs = statement.executeQuery(sql_select_table_from);
         while (rs.next()) {
-            limitesSensores.put(rs.getString(2) + rs.getInt(1),
+            sensorsLimits.put(rs.getString(2) + rs.getInt(1),
                     new Double[] { rs.getDouble(3), rs.getDouble(4) });
         }
     }
 
     // TODO: Enviar alertas cinzentos
     public void removeAnomalousValues() {
-        for (String s : sensores) {
-            if (!medicoes.get(s).isEmpty()) {
-                for (int i = 0; i < medicoes.get(s).size(); i++) {
-                    if (medicoes.get(s).get(i).getLeitura() < limitesSensores.get(s)[0]
-                            || medicoes.get(s).get(i).getLeitura() > limitesSensores.get(s)[1]) {
-                        medicoes.get(s).remove(i);
+        for (String s : sensors) {
+            if (!records.get(s).isEmpty()) {
+                for (int i = 0; i < records.get(s).size(); i++) {
+                    if (records.get(s).get(i).getLeitura() < sensorsLimits.get(s)[0]
+                            || records.get(s).get(i).getLeitura() > sensorsLimits.get(s)[1]) {
+                        records.get(s).remove(i);
                         i--;
                     }
                 }
@@ -225,8 +225,8 @@ public class MQTTToMySQL {
 
     // TODO: Criar sistema de controlo de ID para nao ter AI
     public void sendRecordsToMySQL() throws SQLException {
-        for (String s : sensores) {
-            for (Medicao m : medicoes.get(s)) {
+        for (String s : sensors) {
+            for (Medicao m : records.get(s)) {
                 // for (Medicao m : processadas) {
                 String query = "INSERT INTO Medicao(IDZona, Sensor, DataHora, Leitura) VALUES(" + "'" +
                         m.getZona().split("Z")[1] + "', '" + m.getSensor() + "', '" + m.getHora()

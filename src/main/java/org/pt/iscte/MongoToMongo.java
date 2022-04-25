@@ -16,7 +16,7 @@ public class MongoToMongo {
     private static final String MONGO_DESTINATION = "Mongo Destination";
 
     private final Map<String, MongoCollection<Document>> collections = new HashMap<>();
-    private String[] sensores;
+    private String[] sensors;
 
     private final String mongo_address_from;
     private final int mongo_port_from;
@@ -52,7 +52,7 @@ public class MongoToMongo {
         mongo_password_to = ini.get(MONGO_DESTINATION, "mongo_password_to").toCharArray();
         mongo_credential_database_to = ini.get(MONGO_DESTINATION, "mongo_credential_database_to");
 
-        sensores = ini.get(MONGO_ORIGIN, "mongo_sensores_from").toString().split(",");
+        sensors = ini.get(MONGO_ORIGIN, "mongo_sensores_from").toString().split(",");
     }
 
     public void connectFromMongo() {
@@ -73,7 +73,7 @@ public class MongoToMongo {
     }
 
     public void createAndGetCollections() {
-        for (String s : sensores) {
+        for (String s : sensors) {
             try {
                 mongo_database_to.createCollection("sensor" + s.toLowerCase());
             } catch (Exception e) {

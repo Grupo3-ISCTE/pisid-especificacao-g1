@@ -29,7 +29,7 @@ public class MongoToMQTT {
     private static final int PAST_MINUTES_FOR_MONGO_FIND = 1;
 
     private final List<MongoCollection<Document>> collections = new ArrayList<>();
-    String[] sensores;
+    String[] sensors;
 
     private final String mongo_address_to;
     private final int mongo_port_to;
@@ -58,7 +58,7 @@ public class MongoToMQTT {
         cloud_client_name_from = ini.get(CLOUD_ORIGIN, "cloud_client_from");
         cloud_qos_from = Integer.parseInt(ini.get(CLOUD_ORIGIN, "cloud_qos_from"));
 
-        sensores = ini.get("Mongo Origin", "mongo_sensores_from").toString().split(",");
+        sensors = ini.get("Mongo Origin", "mongo_sensores_from").toString().split(",");
     }
 
     public void connectToMongo() {
@@ -81,7 +81,7 @@ public class MongoToMQTT {
     }
 
     public void getCollections() {
-        for (String s : sensores)
+        for (String s : sensors)
             collections.add(mongo_database_to.getCollection("sensor" + s.toLowerCase()));
     }
 
@@ -97,13 +97,10 @@ public class MongoToMQTT {
         return criteria;
     }
 
-    // TODO: O Migrado so deve passar a um quando enviamos para o Java
     public void findAndSendLastRecords() {
         try {
             for (MongoCollection<Document> c : collections) {
-
                 FindIterable<Document> records = c.find(getCriteriaForMongoSearch());
-
                 for (Document r : records) {
                     sendMessage(new MqttMessage(r.toString().getBytes()));
                     c.updateOne(r, new BasicDBObject().append("$inc", new BasicDBObject().append("Migrado", 1)));
@@ -126,13 +123,13 @@ public class MongoToMQTT {
     public static void main(String[] args) throws IOException, MqttException, InterruptedException {
         Ini ini = new Ini(new File("src/main/java/org/pt/iscte/config.ini"));
         int sql_delay_to = Integer.parseInt(ini.get("Mysql Destination", "sql_delay_to"));
-        MongoToMQTT mtmqtt = new MongoToMQTT(ini);
-        mtmqtt.connectToMongo();
-        mtmqtt.connectFromMQTT();
-        mtmqtt.getCollections();
+        MongoToMQTT mongoToMQTT = new MongoToMQTT(ini);
+        mongoToMQTT.connectToMongo();
+        mongoToMQTT.connectFromMQTT();
+        mongoToMQTT.getCollections();
         while (true) {
-            mtmqtt.findAndSendLastRecords();
-            mtmqtt.sendMessage(new MqttMessage("fim".getBytes()));
+            mongoToMQTT.findAndSendLastRecords();
+            mongoToMQTT.sendMessage(new MqttMessage("fim".getBytes()));
             Thread.sleep(sql_delay_to);
         }
     }
