@@ -99,9 +99,11 @@ public class MongoToMQTT {
     }
 
     public void sendMessage(MqttMessage msg) throws MqttException {
-        msg.setQos(cloud_qos_from);
-        msg.setRetained(true);
-        cloud_client_from.publish(cloud_topic_from, msg);
+        if (cloud_client_from.isConnected()) {
+            msg.setQos(cloud_qos_from);
+            msg.setRetained(true);
+            cloud_client_from.publish(cloud_topic_from, msg);
+        }
     }
 
     public static void main(String[] args) throws IOException, MqttException, InterruptedException {
