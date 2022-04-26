@@ -170,7 +170,7 @@ public class MongoToMySQL {
         }
     }
 
-    // TODO: nao sei calcular os quartis
+    // TODO: se o da outra classe funcionar, meter aqui
     // Atenção que no fim da remoção deverá ser updated a lista records (é a que vai para o mysql)
     public void removeOutliers() {
         try {

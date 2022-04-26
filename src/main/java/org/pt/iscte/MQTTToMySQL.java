@@ -192,6 +192,8 @@ public class MQTTToMySQL {
         }
     }
 
+    // TODO: fazer o "trigger" deles em java
+
     // TODO: Fazer método (ordenar por data)
     // public void removerOutliers() {
     // try {
@@ -237,7 +239,6 @@ public class MQTTToMySQL {
     // return values.get(values.size() / 2).getLeitura();
     // }
 
-    // TODO: Criar sistema de controlo de ID para nao ter AI
     public void sendRecordsToMySQL() throws SQLException {
         for (String s : sensors) {
             for (Record m : records.get(s)) {
