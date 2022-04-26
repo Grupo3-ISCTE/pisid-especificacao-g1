@@ -43,9 +43,9 @@ public class MongoToMySQL {
     private Connection sql_connection_to;
 
     private final List<MongoCollection<Document>> collections = new ArrayList<>();
-    String[] sensors;
-    MMap records = new MMap();
-    Map<String, Double[]> sensorsLimits = new HashMap<>();
+    private final String[] sensors;
+    private Map<String, ArrayList<Medicao>> records = new HashMap<>();
+    private Map<String, Double[]> sensorsLimits = new HashMap<>();
 
     public MongoToMySQL(Ini ini) {
         mongo_address_to = ini.get(MONGO_DESTINATION, "mongo_address_to");
@@ -65,6 +65,9 @@ public class MongoToMySQL {
         sql_database_password_to = ini.get(MYSQL_DESTINATION, "sql_database_password_to");
 
         sensors = ini.get("Mongo Origin", "mongo_sensores_from").toString().split(",");
+
+        for(String sensor : sensors)
+            records.put(sensor, new ArrayList<>());
     }
 
     public void connectToMongo() {
@@ -113,8 +116,9 @@ public class MongoToMySQL {
     }
 
     public void removeDuplicatedValues() {
-        MMap temp = new MMap();
+        Map<String, ArrayList<Medicao>> temp = new HashMap<>();
         for (String sensor : sensors) {
+            temp.put(sensor, new ArrayList<>());
             if (!records.get(sensor).isEmpty()) {
                 temp.get(sensor).add(records.get(sensor).get(0));
                 try {
@@ -220,7 +224,8 @@ public class MongoToMySQL {
                 mongoToMySQL.removeAnomalousValues();
                 mongoToMySQL.removeOutliers();
                 mongoToMySQL.sendRecordsToMySQL();
-                mongoToMySQL.records.clear();
+                for (ArrayList<Medicao> list : mongoToMySQL.records.values())
+                    list.clear();
                 Thread.sleep(sql_delay_to);
             }
 

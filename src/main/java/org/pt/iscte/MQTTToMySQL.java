@@ -30,13 +30,14 @@ public class MQTTToMySQL {
     private final String sql_database_password_to;
     private Connection sql_connection_to;
 
-    String[] sensors;
+    private final String[] sensors;
 
-    List<Document> receivedMessages = new ArrayList<>();
-    MMap records = new MMap();
-    Map<String, Double[]> sensorsLimits = new HashMap<>();
+    private final List<Document> receivedMessages = new ArrayList<>();
 
-    ArrayList<Medicao> processadas = new ArrayList<>();
+    private Map<String, ArrayList<Medicao>> records = new HashMap<>();
+    private Map<String, Double[]> sensorsLimits = new HashMap<>();
+
+    private ArrayList<Medicao> processadas = new ArrayList<>();
     private static final int MIN_VALUES = 3;
 
     public MQTTToMySQL(Ini ini) {
@@ -54,6 +55,9 @@ public class MQTTToMySQL {
         sql_database_password_to = ini.get(MYSQL_DESTINATION, "sql_database_password_to");
 
         sensors = ini.get("Mongo Origin", "mongo_sensores_from").toString().split(",");
+
+        for(String sensor : sensors)
+            records.put(sensor, new ArrayList<>());
     }
 
     public void connectToMQTT() throws MqttException {
@@ -101,7 +105,9 @@ public class MQTTToMySQL {
                         // System.err.println("sai outliers");
                         sendRecordsToMySQL();
 
-                        records.clear();
+                        for (ArrayList<Medicao> listOfRecords : records.values())
+                            listOfRecords.clear();
+
                         receivedMessages.clear();
                         // processadas.clear();
                     }
@@ -132,8 +138,9 @@ public class MQTTToMySQL {
     }
 
     public void removeDuplicatedValues() {
-        MMap temp = new MMap();
+        Map<String, ArrayList<Medicao>> temp = new HashMap<>();
         for (String sensor : sensors) {
+            temp.put(sensor, new ArrayList<>());
             if (!records.get(sensor).isEmpty()) {
                 temp.get(sensor).add(records.get(sensor).get(0));
                 try {
@@ -243,7 +250,6 @@ public class MQTTToMySQL {
             mqttsql.connectToMQTT();
             mqttsql.connectFromMySql();
             mqttsql.connectToMySql();
-            // System.err.println("init funciton");
             mqttsql.receiveAndSendLastRecords();
         } catch (Exception e) {
             e.printStackTrace();
