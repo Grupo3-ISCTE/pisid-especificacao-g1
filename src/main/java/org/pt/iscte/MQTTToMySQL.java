@@ -38,7 +38,7 @@ public class MQTTToMySQL {
     private Map<String , Record> previousRecords = new HashMap<>();
     private Map<String, Double[]> sensorsLimits = new HashMap<>();
 
-    private ArrayList<Record> processadas = new ArrayList<>();
+    private ArrayList<Record> processed = new ArrayList<>();
     private static final int MIN_VALUES = 3;
 
     public MQTTToMySQL(Ini ini) {
@@ -195,49 +195,55 @@ public class MQTTToMySQL {
     // TODO: fazer o "trigger" deles em java
 
     // TODO: Fazer método (ordenar por data)
-    // public void removerOutliers() {
-    // try {
-    // if (!medicoes.isEmpty()) {
-    // System.out.println(medicoes.getValuesLists());
-    // for (ArrayList<Medicao> valores : medicoes.getValuesLists()) {
-    // if (valores.size() > MIN_VALUES) {
+    public void removeOutliers() {
+        try {
+            if (!records.isEmpty()) {
 
-    // ArrayList<Medicao> proc = new ArrayList<Medicao>() {
-    // };
-    // System.out.println("valores: " + valores);
-    // Collections.sort(valores);
+                //System.out.println(records.values());
 
-    // double Q1 = calculteMedian(valores.subList(0, valores.size() / 2));
-    // double Q3 = calculteMedian(valores.subList(valores.size() / 2 + 1,
-    // valores.size()));
-    // double Aq = Q3 - Q1;
-    // System.out.println("Q1: " + Q1);
-    // System.out.println("Q3: " + Q3);
-    // System.out.println("Aq: " + Aq);
+                for (String sensor : sensors) {
+                    if (!records.get(sensors).isEmpty()) {
+                        ArrayList<Record> values = records.get(sensor);
 
-    // for (Medicao medicao : valores) {
-    // if (medicao.getLeitura() >= Q1 - 1.5 * Aq && medicao.getLeitura() <= Q3 + 1.5
-    // * Aq) {
-    // proc.add(medicao);
-    // }
-    // }
+                        if (values.size() > MIN_VALUES) {
 
-    // System.out.println("Processadas: " + proc);
-    // }
-    // }
-    // }
-    // } catch (Exception e) {
-    // e.printStackTrace();
-    // }
-    // }
+                            ArrayList<Record> temp = new ArrayList<>();
+                            //System.out.println("valores: " + values);
+                            Collections.sort(values);
 
-    // private static double calculteMedian(List<Medicao> values) {
-    // if (values.size() % 2 == 0)
-    // return (values.get(values.size() / 2).getLeitura() + values.get(values.size()
-    // / 2 - 1).getLeitura()) / 2;
-    // else
-    // return values.get(values.size() / 2).getLeitura();
-    // }
+                            double Q1 = calculateMedian(values.subList(0, values.size() / 2));
+                            double Q3 = calculateMedian(values.subList(values.size() / 2 + 1, values.size()));
+                            double Aq = Q3 - Q1;
+                            //System.out.println("Q1: " + Q1);
+                            //System.out.println("Q3: " + Q3);
+                            //System.out.println("Aq: " + Aq);
+
+                            for (Record medicao : values) {
+                                if (medicao.getLeitura() >= Q1 - 1.5 * Aq && medicao.getLeitura() <= Q3 + 1.5 * Aq) {
+                                    temp.add(medicao);
+                                }
+                            }
+
+                            //System.out.println("Processadas: " + temp);
+                            records.put(sensor, temp);
+
+                        }
+                    }
+                }
+
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private static double calculateMedian(List<Record> values) {
+        if (values.size() % 2 == 0)
+            return (values.get(values.size() / 2).getLeitura() + values.get(values.size()
+                    / 2 - 1).getLeitura()) / 2;
+        else
+            return values.get(values.size() / 2).getLeitura();
+    }
 
     public void sendRecordsToMySQL() throws SQLException {
         for (String s : sensors) {

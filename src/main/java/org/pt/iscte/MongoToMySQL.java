@@ -47,6 +47,7 @@ public class MongoToMySQL {
     private Map<String, ArrayList<Record>> records = new HashMap<>();
     private Map<String , Record> previousRecords = new HashMap<>();
     private Map<String, Double[]> sensorsLimits = new HashMap<>();
+    private static final int MIN_VALUES = 3;
 
     public MongoToMySQL(Ini ini) {
         mongo_address_to = ini.get(MONGO_DESTINATION, "mongo_address_to");
@@ -174,29 +175,52 @@ public class MongoToMySQL {
     // Atenção que no fim da remoção deverá ser updated a lista records (é a que vai para o mysql)
     public void removeOutliers() {
         try {
-            // if (!medicoes.isEmpty()) {
-            // medicoes.sort();
-            // for (String s : listaSensores) {
-            // if (!medicoes.get(s).isEmpty()) {
-            // double q1 = medicoes.get(s).get(3 * (medicoes.get(s).size() + 1) /
-            // 4).getLeitura();
-            // double q3 = medicoes.get(s).get((medicoes.get(s).size() + 1) / 4)
-            // .getLeitura();
-            // double iqr = q3 - q1;
-            // for (int i = 0; i < medicoes.get(s).size(); i++) {
-            // double val = medicoes.get(s).get(i).getLeitura();
-            // if (val < q1 - iqr * 1.5 || val > q3 + iqr * 1.5) {
-            // // System.out.println("OUTLIER: " + medicoes.get(s).get(i));
-            // medicoes.get(s).remove(i);
-            // i--;
-            // }
-            // }
-            // }
-            // }
-            // }
+            if (!records.isEmpty()) {
+
+                //System.out.println(records.values());
+
+                for (String sensor : sensors) {
+                    if (!records.get(sensors).isEmpty()) {
+                        ArrayList<Record> values = records.get(sensor);
+
+                        if (values.size() > MIN_VALUES) {
+
+                            ArrayList<Record> temp = new ArrayList<>();
+                            //System.out.println("valores: " + values);
+                            Collections.sort(values);
+
+                            double Q1 = calculateMedian(values.subList(0, values.size() / 2));
+                            double Q3 = calculateMedian(values.subList(values.size() / 2 + 1, values.size()));
+                            double Aq = Q3 - Q1;
+                            //System.out.println("Q1: " + Q1);
+                            //System.out.println("Q3: " + Q3);
+                            //System.out.println("Aq: " + Aq);
+
+                            for (Record medicao : values) {
+                                if (medicao.getLeitura() >= Q1 - 1.5 * Aq && medicao.getLeitura() <= Q3 + 1.5 * Aq) {
+                                    temp.add(medicao);
+                                }
+                            }
+
+                            //System.out.println("Processadas: " + temp);
+                            records.put(sensor, temp);
+
+                        }
+                    }
+                }
+
+            }
         } catch (Exception e) {
             e.printStackTrace();
         }
+    }
+
+    private static double calculateMedian(List<Record> values) {
+        if (values.size() % 2 == 0)
+            return (values.get(values.size() / 2).getLeitura() + values.get(values.size()
+                    / 2 - 1).getLeitura()) / 2;
+        else
+            return values.get(values.size() / 2).getLeitura();
     }
 
     private void insertLastRecords() {
