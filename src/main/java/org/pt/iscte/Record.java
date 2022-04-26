@@ -8,11 +8,11 @@ import java.sql.Timestamp;
 import org.bson.Document;
 
 public class Record implements Comparable<Record> {
-    private  String sensor;
-    private  String zona;
-    private  Timestamp hora;
-    private  double leitura;
-    private  int migrado;
+    private String sensor;
+    private String zona;
+    private Timestamp hora;
+    private double leitura;
+    private int migrado;
 
     public Record(Document medicao) {
         try {
@@ -20,7 +20,8 @@ public class Record implements Comparable<Record> {
             zona = medicao.get("Zona").toString();
             hora = Timestamp.valueOf(medicao.get("Data").toString().split("T")[0] + " "
                     + medicao.get("Data").toString().split("T")[1].split("Z")[0]);
-            BigDecimal bd = new BigDecimal(Double.parseDouble(medicao.get("Medicao").toString())).setScale(2, RoundingMode.HALF_UP);
+            BigDecimal bd = new BigDecimal(Double.parseDouble(medicao.get("Medicao").toString())).setScale(2,
+                    RoundingMode.HALF_UP);
             leitura = bd.doubleValue();
             migrado = Integer.parseInt(medicao.get("Migrado").toString());
         } catch (Exception e) {
@@ -44,13 +45,12 @@ public class Record implements Comparable<Record> {
         return leitura;
     }
 
-
     public String toString() {
         return "Sensor: " + sensor +
-//                ", Zona: " + zona +
-//                ", Hora: " + hora +
-                ", Leitura: " + leitura; //+
-//                ", Migrado: " + migrado;
+        // ", Zona: " + zona +
+        // ", Hora: " + hora +
+                ", Leitura: " + leitura; // +
+        // ", Migrado: " + migrado;
     }
 
     @Override
