@@ -21,7 +21,6 @@ public class MongoToMySQL {
     private static final String MONGO_DESTINATION = "Mongo Destination";
     private static final String MYSQL_ORIGIN = "Mysql Origin";
     private static final String MYSQL_DESTINATION = "Mysql Destination";
-    private static final int PAST_MINUTES_FOR_MONGO_FIND = 1;
 
     private final String mongo_address_to;
     private final int mongo_port_to;
@@ -41,6 +40,8 @@ public class MongoToMySQL {
     private final String sql_database_user_to;
     private final String sql_database_password_to;
     private Connection sql_connection_to;
+
+    private final int past_minutes_for_mongo_search;
 
     private final List<MongoCollection<Document>> collections = new ArrayList<>();
     private final String[] sensors;
@@ -67,6 +68,8 @@ public class MongoToMySQL {
         sql_database_password_to = ini.get(MYSQL_DESTINATION, "sql_database_password_to");
 
         sensors = ini.get("Mongo Origin", "mongo_sensores_from").toString().split(",");
+        past_minutes_for_mongo_search = Integer.parseInt(ini.get("Java", "past_minutes_mongo_find"));
+
 
         for(String sensor : sensors) {
             records.put(sensor, new ArrayList<>());
@@ -97,7 +100,7 @@ public class MongoToMySQL {
     }
 
     private BasicDBObject getCriteriaForMongoSearch() {
-        String[] date = new Timestamp(new Date(System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(-PAST_MINUTES_FOR_MONGO_FIND)).getTime()).toString().split(" ");
+        String[] date = new Timestamp(new Date(System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(-past_minutes_for_mongo_search)).getTime()).toString().split(" ");
         date[1] = date[1].split("\\.")[0];
         String mongoDate = date[0] + "T" + date[1] + "Z";
 

@@ -84,7 +84,7 @@ public class MongoToMongo {
     }
 
     public void findAndInsertLastRecords() {
-        FindIterable<Document> records = mongo_collection_from.find().sort(new Document("_id", -1)).limit(6);
+        FindIterable<Document> records = mongo_collection_from.find().sort(new Document("_id", -1)).limit(sensors.length);
         try {
             for (Document r : records) {
                 r.append("Migrado", 0);
