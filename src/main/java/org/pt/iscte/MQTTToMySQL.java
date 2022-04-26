@@ -7,6 +7,7 @@ import org.ini4j.Ini;
 import java.io.File;
 import java.sql.*;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 
 public class MQTTToMySQL {
 
@@ -29,16 +30,18 @@ public class MQTTToMySQL {
     private final String sql_database_user_to;
     private final String sql_database_password_to;
     private Connection sql_connection_to;
+    private int sql_grey_alert_delay;
 
     private final String[] sensors;
 
     private final List<Document> receivedMessages = new ArrayList<>();
 
     private Map<String, ArrayList<Record>> records = new HashMap<>();
-    private Map<String , Record> previousRecords = new HashMap<>();
+    private Map<String, Record> previousRecords = new HashMap<>();
     private Map<String, Double[]> sensorsLimits = new HashMap<>();
 
     private ArrayList<Record> processed = new ArrayList<>();
+    private List<Record> recordsForGreyAlerts = new ArrayList<>();
     private static final int MIN_VALUES = 3;
 
     public MQTTToMySQL(Ini ini) {
@@ -54,10 +57,11 @@ public class MQTTToMySQL {
         sql_database_connection_to = ini.get(MYSQL_DESTINATION, "sql_database_connection_to");
         sql_database_user_to = ini.get(MYSQL_DESTINATION, "sql_database_user_to");
         sql_database_password_to = ini.get(MYSQL_DESTINATION, "sql_database_password_to");
+        sql_grey_alert_delay = Integer.parseInt(ini.get(MYSQL_DESTINATION, "sql_grey_alert_delay"));
 
         sensors = ini.get("Mongo Origin", "mongo_sensores_from").toString().split(",");
 
-        for(String sensor : sensors) {
+        for (String sensor : sensors) {
             records.put(sensor, new ArrayList<>());
             previousRecords.put(sensor, null);
         }
@@ -76,7 +80,8 @@ public class MQTTToMySQL {
         return cloud_options_to;
     }
 
-    // TODO: Para que vai ser utilizada a tabela Zona? Deveria ser usada para análise de outliers
+    // TODO: Para que vai ser utilizada a tabela Zona? Deveria ser usada para
+    // análise de outliers
     public void connectFromMySql() throws SQLException {
         sql_connection_from = DriverManager.getConnection(sql_database_connection_from, sql_database_user_from,
                 sql_database_password_from);
@@ -90,7 +95,6 @@ public class MQTTToMySQL {
     public void receiveAndSendLastRecords() {
         try {
             if (cloud_client_to.isConnected()) {
-
                 cloud_client_to.subscribe(cloud_topic_to, (topic, msg) -> {
                     if (!msg.toString().equals("fim")) {
                         receivedMessages.add(stringToDocument(msg));
@@ -100,6 +104,7 @@ public class MQTTToMySQL {
                         removeDuplicatedValuesAndDates();
                         getSensorsLimits();
                         removeAnomalousValues();
+                        sendGreyAlerts();
                         // System.err.println("inciar outliers");
                         // //TODO PROBLEMA E Q TEM DE SER MAIOR QUE 3 PARA NAO DAR MERDA. NAO
                         // CONSEGUIMOS DISTINGUIR QUEM SAO OS CERTOS OU ERRADOS COM POUCOS
@@ -147,7 +152,7 @@ public class MQTTToMySQL {
             temp.put(sensor, new ArrayList<>());
             if (!records.get(sensor).isEmpty()) {
                 try {
-                    if(previousRecords.get(sensor) == null) {
+                    if (previousRecords.get(sensor) == null) {
                         temp.get(sensor).add(records.get(sensor).get(0));
                     } else {
                         if (records.get(sensor).get(0).getLeitura() != previousRecords.get(sensor).getLeitura() &&
@@ -167,7 +172,6 @@ public class MQTTToMySQL {
         records = temp;
     }
 
-
     public void getSensorsLimits() throws SQLException {
         Statement statement = sql_connection_from.createStatement();
         ResultSet rs = statement.executeQuery(sql_select_table_from);
@@ -177,19 +181,52 @@ public class MQTTToMySQL {
         }
     }
 
-    // TODO: Enviar alertas cinzentos
     public void removeAnomalousValues() {
         for (String s : sensors) {
             if (!records.get(s).isEmpty()) {
                 for (int i = 0; i < records.get(s).size(); i++) {
                     if (records.get(s).get(i).getLeitura() < sensorsLimits.get(s)[0]
                             || records.get(s).get(i).getLeitura() > sensorsLimits.get(s)[1]) {
+                        recordsForGreyAlerts.add(records.get(s).get(i));
                         records.get(s).remove(i);
                         i--;
                     }
                 }
             }
         }
+    }
+
+    public void sendGreyAlerts() throws SQLException {
+        for (Record r : recordsForGreyAlerts) {
+            Statement statement = sql_connection_to.createStatement();
+            ResultSet rs = statement.executeQuery(
+                    "SELECT IDCultura, IDUtilizador, NomeCultura FROM cultura WHERE IDZona = "
+                            + r.getZona().split("Z")[1] + " AND Estado = 'A'");
+            while (rs.next()) {
+                ResultSet last = statement.executeQuery(
+                        "SELECT DataHoraEscrita FROM alerta WHERE IDAlerta = (SELECT max(IDAlerta) FROM alerta WHERE "
+                                + r.getZona().split("Z")[1] + " AND Sensor = '" + r.getSensor() + "') AND IDZona = "
+                                + r.getZona().split("Z")[1] + " AND Sensor = '" + r.getSensor() + "'");
+                if (!last.next() || new Timestamp(System.currentTimeMillis()).getTime() > (last.getTimestamp(1)
+                        .getTime() + TimeUnit.MINUTES.toMillis(sql_grey_alert_delay))) {
+                    String query = "INSERT INTO Alerta(IDZona, IDCultura, IDUtilizador, NomeCultura, Sensor, Leitura, DataHora, DataHoraEscrita, TipoAlerta, Mensagem) VALUES("
+                            + r.getZona().split("Z")[1] + ", "
+                            + rs.getString(1) + ", '"
+                            + rs.getString(2) + "', '"
+                            + rs.getString(3) + "', '"
+                            + r.getSensor() + "', "
+                            + r.getLeitura() + ", '"
+                            + r.getHora() + "', '"
+                            + new Timestamp(System.currentTimeMillis()) + "', '"
+                            + "C" + "', '"
+                            + "Potencial avaria detetada no sensor " + r.getSensor() + " da Zona "
+                            + r.getZona().split("Z")[1] + " onde se encontra(m) a(s) sua(s) cultura(s)." + "')";
+                    sql_connection_to.prepareStatement(query).execute();
+                    System.out.println("Grey Alert: " + query);
+                }
+            }
+        }
+        recordsForGreyAlerts.clear();
     }
 
     // TODO: fazer o "trigger" deles em java
@@ -199,24 +236,24 @@ public class MQTTToMySQL {
         try {
             if (!records.isEmpty()) {
 
-                //System.out.println(records.values());
+                // System.out.println(records.values());
 
                 for (String sensor : sensors) {
-                    if (!records.get(sensors).isEmpty()) {
+                    if (!records.get(sensor).isEmpty()) {
                         ArrayList<Record> values = records.get(sensor);
 
                         if (values.size() > MIN_VALUES) {
 
                             ArrayList<Record> temp = new ArrayList<>();
-                            //System.out.println("valores: " + values);
+                            // System.out.println("valores: " + values);
                             Collections.sort(values);
 
                             double Q1 = calculateMedian(values.subList(0, values.size() / 2));
                             double Q3 = calculateMedian(values.subList(values.size() / 2 + 1, values.size()));
                             double Aq = Q3 - Q1;
-                            //System.out.println("Q1: " + Q1);
-                            //System.out.println("Q3: " + Q3);
-                            //System.out.println("Aq: " + Aq);
+                            // System.out.println("Q1: " + Q1);
+                            // System.out.println("Q3: " + Q3);
+                            // System.out.println("Aq: " + Aq);
 
                             for (Record medicao : values) {
                                 if (medicao.getLeitura() >= Q1 - 1.5 * Aq && medicao.getLeitura() <= Q3 + 1.5 * Aq) {
@@ -224,7 +261,7 @@ public class MQTTToMySQL {
                                 }
                             }
 
-                            //System.out.println("Processadas: " + temp);
+                            // System.out.println("Processadas: " + temp);
                             records.put(sensor, temp);
 
                         }
@@ -253,16 +290,17 @@ public class MQTTToMySQL {
                         m.getZona().split("Z")[1] + "', '" + m.getSensor() + "', '" + m.getHora()
                         + "', " + m.getLeitura() + ")";
                 sql_connection_to.prepareStatement(query).execute();
-                System.out.println("MySQL query: " + query);
+                System.out.println("MySQL query: " + query); // AQUI
             }
         }
     }
 
     private void insertLastRecords() {
-        // Inserts the last record of the last dump from mqtt per sensor (it never needs to be cleared)
-        for(String sensor : sensors)
-            if(!records.get(sensor).isEmpty())
-                previousRecords.put(sensor, records.get(sensor).get(records.get(sensor).size()-1));
+        // Inserts the last record of the last dump from mqtt per sensor (it never needs
+        // to be cleared)
+        for (String sensor : sensors)
+            if (!records.get(sensor).isEmpty())
+                previousRecords.put(sensor, records.get(sensor).get(records.get(sensor).size() - 1));
     }
 
     public static void main(String[] args) {

@@ -14,8 +14,6 @@ import java.util.*;
 import java.util.Date;
 import java.util.concurrent.TimeUnit;
 
-import static com.mongodb.client.model.Filters.eq;
-
 public class MongoToMySQL {
 
     private static final String MONGO_DESTINATION = "Mongo Destination";
@@ -40,14 +38,16 @@ public class MongoToMySQL {
     private final String sql_database_user_to;
     private final String sql_database_password_to;
     private Connection sql_connection_to;
+    private int sql_grey_alert_delay;
 
     private final int past_minutes_for_mongo_search;
 
     private final List<MongoCollection<Document>> collections = new ArrayList<>();
     private final String[] sensors;
     private Map<String, ArrayList<Record>> records = new HashMap<>();
-    private Map<String , Record> previousRecords = new HashMap<>();
+    private Map<String, Record> previousRecords = new HashMap<>();
     private Map<String, Double[]> sensorsLimits = new HashMap<>();
+    private List<Record> recordsForGreyAlerts = new ArrayList<>();
     private static final int MIN_VALUES = 3;
 
     public MongoToMySQL(Ini ini) {
@@ -66,12 +66,12 @@ public class MongoToMySQL {
         sql_database_connection_to = ini.get(MYSQL_DESTINATION, "sql_database_connection_to");
         sql_database_user_to = ini.get(MYSQL_DESTINATION, "sql_database_user_to");
         sql_database_password_to = ini.get(MYSQL_DESTINATION, "sql_database_password_to");
+        sql_grey_alert_delay = Integer.parseInt(ini.get(MYSQL_DESTINATION, "sql_grey_alert_delay"));
 
         sensors = ini.get("Mongo Origin", "mongo_sensores_from").toString().split(",");
         past_minutes_for_mongo_search = Integer.parseInt(ini.get("Java", "past_minutes_mongo_find"));
 
-
-        for(String sensor : sensors) {
+        for (String sensor : sensors) {
             records.put(sensor, new ArrayList<>());
             previousRecords.put(sensor, null);
         }
@@ -100,7 +100,10 @@ public class MongoToMySQL {
     }
 
     private BasicDBObject getCriteriaForMongoSearch() {
-        String[] date = new Timestamp(new Date(System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(-past_minutes_for_mongo_search)).getTime()).toString().split(" ");
+        String[] date = new Timestamp(
+                new Date(System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(-past_minutes_for_mongo_search))
+                        .getTime())
+                .toString().split(" ");
         date[1] = date[1].split("\\.")[0];
         String mongoDate = date[0] + "T" + date[1] + "Z";
 
@@ -130,7 +133,7 @@ public class MongoToMySQL {
             temp.put(sensor, new ArrayList<>());
             if (!records.get(sensor).isEmpty()) {
                 try {
-                    if(previousRecords.get(sensor) == null) {
+                    if (previousRecords.get(sensor) == null) {
                         temp.get(sensor).add(records.get(sensor).get(0));
                     } else {
                         if (records.get(sensor).get(0).getLeitura() != previousRecords.get(sensor).getLeitura() &&
@@ -166,6 +169,7 @@ public class MongoToMySQL {
                 for (int i = 0; i < records.get(s).size(); i++) {
                     if (records.get(s).get(i).getLeitura() < sensorsLimits.get(s)[0]
                             || records.get(s).get(i).getLeitura() > sensorsLimits.get(s)[1]) {
+                        recordsForGreyAlerts.add(records.get(s).get(i));
                         records.get(s).remove(i);
                         i--;
                     }
@@ -174,30 +178,64 @@ public class MongoToMySQL {
         }
     }
 
+    public void sendGreyAlerts() throws SQLException {
+        for (Record r : recordsForGreyAlerts) {
+            Statement statement = sql_connection_to.createStatement();
+            ResultSet rs = statement.executeQuery(
+                    "SELECT IDCultura, IDUtilizador, NomeCultura FROM cultura WHERE IDZona = "
+                            + r.getZona().split("Z")[1] + " AND Estado = 'A'");
+            while (rs.next()) {
+                ResultSet last = statement.executeQuery(
+                        "SELECT DataHoraEscrita FROM alerta WHERE IDAlerta = (SELECT max(IDAlerta) FROM alerta WHERE "
+                                + r.getZona().split("Z")[1] + " AND Sensor = '" + r.getSensor() + "') AND IDZona = "
+                                + r.getZona().split("Z")[1] + " AND Sensor = '" + r.getSensor() + "'");
+                if (!last.next() || new Timestamp(System.currentTimeMillis()).getTime() > (last.getTimestamp(1)
+                        .getTime() + TimeUnit.MINUTES.toMillis(sql_grey_alert_delay))) {
+                    String query = "INSERT INTO Alerta(IDZona, IDCultura, IDUtilizador, NomeCultura, Sensor, Leitura, DataHora, DataHoraEscrita, TipoAlerta, Mensagem) VALUES("
+                            + r.getZona().split("Z")[1] + ", "
+                            + rs.getString(1) + ", '"
+                            + rs.getString(2) + "', '"
+                            + rs.getString(3) + "', '"
+                            + r.getSensor() + "', "
+                            + r.getLeitura() + ", '"
+                            + r.getHora() + "', '"
+                            + new Timestamp(System.currentTimeMillis())
+                            + "', '"
+                            + "C" + "', '"
+                            + "Potencial avaria detetada no sensor " + r.getSensor() + " da Zona "
+                            + r.getZona().split("Z")[1] + " onde se encontra(m) a(s) sua(s) cultura(s)." + "')";
+                    sql_connection_to.prepareStatement(query).execute();
+                    System.out.println("Grey Alert: " + query);
+                }
+            }
+        }
+    }
+
     // TODO: se o da outra classe funcionar, meter aqui
-    // Atenção que no fim da remoção deverá ser updated a lista records (é a que vai para o mysql)
+    // Atenção que no fim da remoção deverá ser updated a lista records (é a que vai
+    // para o mysql)
     public void removeOutliers() {
         try {
             if (!records.isEmpty()) {
 
-                //System.out.println(records.values());
+                // System.out.println(records.values());
 
                 for (String sensor : sensors) {
-                    if (!records.get(sensors).isEmpty()) {
+                    if (!records.get(sensor).isEmpty()) {
                         ArrayList<Record> values = records.get(sensor);
 
                         if (values.size() > MIN_VALUES) {
 
                             ArrayList<Record> temp = new ArrayList<>();
-                            //System.out.println("valores: " + values);
+                            // System.out.println("valores: " + values);
                             Collections.sort(values);
 
                             double Q1 = calculateMedian(values.subList(0, values.size() / 2));
                             double Q3 = calculateMedian(values.subList(values.size() / 2 + 1, values.size()));
                             double Aq = Q3 - Q1;
-                            //System.out.println("Q1: " + Q1);
-                            //System.out.println("Q3: " + Q3);
-                            //System.out.println("Aq: " + Aq);
+                            // System.out.println("Q1: " + Q1);
+                            // System.out.println("Q3: " + Q3);
+                            // System.out.println("Aq: " + Aq);
 
                             for (Record medicao : values) {
                                 if (medicao.getLeitura() >= Q1 - 1.5 * Aq && medicao.getLeitura() <= Q3 + 1.5 * Aq) {
@@ -205,7 +243,7 @@ public class MongoToMySQL {
                                 }
                             }
 
-                            //System.out.println("Processadas: " + temp);
+                            // System.out.println("Processadas: " + temp);
                             records.put(sensor, temp);
 
                         }
@@ -227,10 +265,11 @@ public class MongoToMySQL {
     }
 
     private void insertLastRecords() {
-        // Inserts the last record of the last dump from mqtt per sensor (it never needs to be cleared)
-        for(String sensor : sensors)
-            if(!records.get(sensor).isEmpty())
-                previousRecords.put(sensor, records.get(sensor).get(records.get(sensor).size()-1));
+        // Inserts the last record of the last dump from mqtt per sensor (it never needs
+        // to be cleared)
+        for (String sensor : sensors)
+            if (!records.get(sensor).isEmpty())
+                previousRecords.put(sensor, records.get(sensor).get(records.get(sensor).size() - 1));
     }
 
     public void sendRecordsToMySQL() throws SQLException {
@@ -262,6 +301,7 @@ public class MongoToMySQL {
                 mongoToMySQL.removeDuplicatedValuesAndDates();
                 mongoToMySQL.getSensorsLimits();
                 mongoToMySQL.removeAnomalousValues();
+                mongoToMySQL.sendGreyAlerts();
                 mongoToMySQL.removeOutliers();
                 mongoToMySQL.insertLastRecords();
                 mongoToMySQL.sendRecordsToMySQL();
