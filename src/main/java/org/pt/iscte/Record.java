@@ -1,30 +1,27 @@
 
 package org.pt.iscte;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.sql.Timestamp;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.List;
 
 import org.bson.Document;
 
-import javax.print.Doc;
-
-public class Medicao implements Comparable<Medicao> {
+public class Record implements Comparable<Record> {
     private  String sensor;
     private  String zona;
     private  Timestamp hora;
     private  double leitura;
     private  int migrado;
 
-    public Medicao(Document medicao) {
+    public Record(Document medicao) {
         try {
             sensor = medicao.get("Sensor").toString();
             zona = medicao.get("Zona").toString();
             hora = Timestamp.valueOf(medicao.get("Data").toString().split("T")[0] + " "
                     + medicao.get("Data").toString().split("T")[1].split("Z")[0]);
-            leitura = Double.parseDouble(medicao.get("Medicao").toString());
+            BigDecimal bd = new BigDecimal(Double.parseDouble(medicao.get("Medicao").toString())).setScale(2, RoundingMode.HALF_UP);
+            leitura = bd.doubleValue();
             migrado = Integer.parseInt(medicao.get("Migrado").toString());
         } catch (Exception e) {
             // System.out.println("Medicao inválida");
@@ -57,7 +54,7 @@ public class Medicao implements Comparable<Medicao> {
     }
 
     @Override
-    public int compareTo(Medicao otherMedicao) {
-        return Double.compare(getLeitura(), otherMedicao.getLeitura());
+    public int compareTo(Record otherRecord) {
+        return Double.compare(getLeitura(), otherRecord.getLeitura());
     }
 }

@@ -44,7 +44,8 @@ public class MongoToMySQL {
 
     private final List<MongoCollection<Document>> collections = new ArrayList<>();
     private final String[] sensors;
-    private Map<String, ArrayList<Medicao>> records = new HashMap<>();
+    private Map<String, ArrayList<Record>> records = new HashMap<>();
+    private Map<String , Record> previousRecords = new HashMap<>();
     private Map<String, Double[]> sensorsLimits = new HashMap<>();
 
     public MongoToMySQL(Ini ini) {
@@ -66,8 +67,10 @@ public class MongoToMySQL {
 
         sensors = ini.get("Mongo Origin", "mongo_sensores_from").toString().split(",");
 
-        for(String sensor : sensors)
+        for(String sensor : sensors) {
             records.put(sensor, new ArrayList<>());
+            previousRecords.put(sensor, null);
+        }
     }
 
     public void connectToMongo() {
@@ -108,36 +111,39 @@ public class MongoToMySQL {
         for (MongoCollection<Document> c : collections) {
             FindIterable<Document> records = c.find(getCriteriaForMongoSearch());
             for (Document r : records) {
-                Medicao m = new Medicao(r);
+                Record m = new Record(r);
                 this.records.get(m.getSensor()).add(m);
                 c.updateOne(r, new BasicDBObject().append("$inc", new BasicDBObject().append("Migrado", 1)));
+                System.out.println(r); // AQUI
             }
         }
     }
 
-    public void removeDuplicatedValues() {
-        Map<String, ArrayList<Medicao>> temp = new HashMap<>();
+    // Removes both duplicated readings and duplicated timestamps
+    public void removeDuplicatedValuesAndDates() {
+        Map<String, ArrayList<Record>> temp = new HashMap<>();
         for (String sensor : sensors) {
             temp.put(sensor, new ArrayList<>());
             if (!records.get(sensor).isEmpty()) {
-                temp.get(sensor).add(records.get(sensor).get(0));
                 try {
-                    for (int i = 1; i < records.get(sensor).size(); i++)
-                        if (records.get(sensor).get(i).getLeitura() != records.get(sensor).get(i - 1)
-                                .getLeitura()) {
+                    if(previousRecords.get(sensor) == null) {
+                        temp.get(sensor).add(records.get(sensor).get(0));
+                    } else {
+                        if (records.get(sensor).get(0).getLeitura() != previousRecords.get(sensor).getLeitura() &&
+                                !records.get(sensor).get(0).getHora().equals(previousRecords.get(sensor).getHora()))
+                            temp.get(sensor).add(records.get(sensor).get(0));
+                    }
+                    for (int i = 1; i < records.get(sensor).size(); i++) {
+                        if (records.get(sensor).get(i).getLeitura() != records.get(sensor).get(i - 1).getLeitura() &&
+                                !records.get(sensor).get(i).getHora().equals(records.get(sensor).get(i - 1).getHora()))
                             temp.get(sensor).add(records.get(sensor).get(i));
-                        }
+                    }
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
             }
         }
         records = temp;
-    }
-
-    // TODO: fazer método caso o professor decida duplicar os bat
-    public void removerValoresNaMesmaHora() {
-
     }
 
     public void getSensorsLimits() throws SQLException {
@@ -165,6 +171,7 @@ public class MongoToMySQL {
     }
 
     // TODO: nao sei calcular os quartis
+    // Atenção que no fim da remoção deverá ser updated a lista records (é a que vai para o mysql)
     public void removeOutliers() {
         try {
             // if (!medicoes.isEmpty()) {
@@ -192,9 +199,16 @@ public class MongoToMySQL {
         }
     }
 
+    private void insertLastRecords() {
+        // Inserts the last record of the last dump from mqtt per sensor (it never needs to be cleared)
+        for(String sensor : sensors)
+            if(!records.get(sensor).isEmpty())
+                previousRecords.put(sensor, records.get(sensor).get(records.get(sensor).size()-1));
+    }
+
     public void sendRecordsToMySQL() throws SQLException {
         for (String s : sensors) {
-            for (Medicao m : records.get(s)) {
+            for (Record m : records.get(s)) {
                 String query = "INSERT INTO Medicao(IDZona, Sensor, DataHora, Leitura) VALUES("
                         + "'" + m.getZona().split("Z")[1] + "', '" + m.getSensor() + "', '" + m.getHora()
                         + "', " +
@@ -218,13 +232,13 @@ public class MongoToMySQL {
             mongoToMySQL.getCollections();
             while (true) {
                 mongoToMySQL.findAndSendLastRecords();
-                mongoToMySQL.removeDuplicatedValues();
-                mongoToMySQL.removerValoresNaMesmaHora();
+                mongoToMySQL.removeDuplicatedValuesAndDates();
                 mongoToMySQL.getSensorsLimits();
                 mongoToMySQL.removeAnomalousValues();
                 mongoToMySQL.removeOutliers();
+                mongoToMySQL.insertLastRecords();
                 mongoToMySQL.sendRecordsToMySQL();
-                for (ArrayList<Medicao> list : mongoToMySQL.records.values())
+                for (ArrayList<Record> list : mongoToMySQL.records.values())
                     list.clear();
                 Thread.sleep(sql_delay_to);
             }
