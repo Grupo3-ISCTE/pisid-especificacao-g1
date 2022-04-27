@@ -171,7 +171,6 @@ public class MongoToMySQL {
         }
     }
 
-    // TODO: Enviar alertas cinzentos
     public void removeAnomalousValues() {
         for (String s : sensors) {
             if (!records.get(s).isEmpty()) {
@@ -222,7 +221,6 @@ public class MongoToMySQL {
         recordsForGreyAlerts.clear();
     }
 
-    // TODO: kinda confirmar
     public void removeOutliers() {
         try {
             if (!records.isEmpty()) {

@@ -83,7 +83,7 @@ public class MQTTToMySQL {
     }
 
     // TODO: Para que vai ser utilizada a tabela Zona? Deveria ser usada para
-    // análise de outliers
+    // análise de outliers, mas não o vamos fazer
     public void connectFromMySql() throws SQLException {
         sql_connection_from = DriverManager.getConnection(sql_database_connection_from, sql_database_user_from,
                 sql_database_password_from);
@@ -219,10 +219,6 @@ public class MQTTToMySQL {
                                 + r.getZona().split("Z")[1] + " AND Sensor = '" + r.getSensor() + "'" + " AND TipoAlerta = 'C' ) AND IDZona = "
                                 + r.getZona().split("Z")[1] + " AND Sensor = '" + r.getSensor() + "'" + " AND TipoAlerta = 'C' ");
 
-                //System.out.println("PC " + new Timestamp(System.currentTimeMillis()).getTime());
-                //System.out.println("SQL " + (last.getTimestamp(1).getTime() + TimeUnit.MINUTES.toMillis(sql_grey_alert_delay)));
-
-
                 if (!last.next() || new Timestamp(System.currentTimeMillis()).getTime() > (last.getTimestamp(1)
                         .getTime() + TimeUnit.MINUTES.toMillis(sql_grey_alert_delay))) {
                     String query = "INSERT INTO Alerta(IDZona, IDCultura, IDUtilizador, NomeCultura, Sensor, Leitura, DataHora, DataHoraEscrita, TipoAlerta, Mensagem) VALUES("
@@ -247,7 +243,6 @@ public class MQTTToMySQL {
 
     // TODO: fazer o "trigger" deles em java
 
-    // TODO: kinda confirmar
     public void removeOutliers() {
         try {
             if (!records.isEmpty()) {
@@ -261,16 +256,21 @@ public class MQTTToMySQL {
                             List<Record> analize = Stream.concat(previousRecords.get(sensor).stream(),records.get(sensor).stream()).collect(Collectors.toList());
                             Collections.sort(analize);
 
+                            // TODO: ver se mudamos o cálculo dos quartis
                             double q1 = calculateMedian(analize.subList(0, analize.size() / 2));
                             double q3 = calculateMedian(analize.subList(analize.size() / 2 + 1, analize.size()));
                             double aq = q3 - q1;
 
                             ArrayList<Record> temp = new ArrayList<>();
+                            //ArrayList<Record> temp2 = new ArrayList<>();
                             for (Record medicao : values) {
-                                if (medicao.getLeitura() >= q1 - 1.5 * aq && medicao.getLeitura() <= q3 + 1.5 * aq) {
+                                if (medicao.getLeitura() >= q1 - 1.5 * aq && medicao.getLeitura() <= q3 + 1.5 * aq)
                                     temp.add(medicao);
-                                }
+                                //} else
+                                  //  temp2.add(medicao);
                             }
+
+                            //System.out.println("outliers: " + temp2);
 
                             Collections.sort(temp , new Comparator<Record>() {
                                 public int compare(Record o1, Record o2) {
