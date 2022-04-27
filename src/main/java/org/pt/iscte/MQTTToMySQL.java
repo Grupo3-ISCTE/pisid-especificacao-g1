@@ -206,7 +206,7 @@ public class MQTTToMySQL {
 
     public void sendGreyAlerts() throws SQLException {
 
-        System.out.println("anomalos: " + recordsForGreyAlerts);
+        //System.out.println("anomalos: " + recordsForGreyAlerts);
 
         for (Record r : recordsForGreyAlerts) {
             Statement statement = sql_connection_to.createStatement();
@@ -216,10 +216,10 @@ public class MQTTToMySQL {
             while (rs.next()) {
                 ResultSet last = statement.executeQuery(
                         "SELECT DataHoraEscrita FROM alerta WHERE IDAlerta = (SELECT max(IDAlerta) FROM alerta WHERE IDZona = "
-                                + r.getZona().split("Z")[1] + " AND Sensor = '" + r.getSensor() + "') AND IDZona = "
-                                + r.getZona().split("Z")[1] + " AND Sensor = '" + r.getSensor() + "'");
+                                + r.getZona().split("Z")[1] + " AND Sensor = '" + r.getSensor() + "'" + " AND TipoAlerta = 'C' ) AND IDZona = "
+                                + r.getZona().split("Z")[1] + " AND Sensor = '" + r.getSensor() + "'" + " AND TipoAlerta = 'C' ");
 
-                System.out.println("PC " + new Timestamp(System.currentTimeMillis()).getTime());
+                //System.out.println("PC " + new Timestamp(System.currentTimeMillis()).getTime());
                 //System.out.println("SQL " + (last.getTimestamp(1).getTime() + TimeUnit.MINUTES.toMillis(sql_grey_alert_delay)));
 
 

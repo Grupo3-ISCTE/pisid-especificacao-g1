@@ -196,8 +196,8 @@ public class MongoToMySQL {
             while (rs.next()) {
                 ResultSet last = statement.executeQuery(
                         "SELECT DataHoraEscrita FROM alerta WHERE IDAlerta = (SELECT max(IDAlerta) FROM alerta WHERE IDZona = "
-                                + r.getZona().split("Z")[1] + " AND Sensor = '" + r.getSensor() + "') AND IDZona = "
-                                + r.getZona().split("Z")[1] + " AND Sensor = '" + r.getSensor() + "'");
+                                + r.getZona().split("Z")[1] + " AND Sensor = '" + r.getSensor() + "'" + " AND TipoAlerta = 'C' ) AND IDZona = "
+                                + r.getZona().split("Z")[1] + " AND Sensor = '" + r.getSensor() + "'" + " AND TipoAlerta = 'C' ");
 
                 if (!last.next() || new Timestamp(System.currentTimeMillis()).getTime() > (last.getTimestamp(1)
                         .getTime() + TimeUnit.MINUTES.toMillis(sql_grey_alert_delay))) {
@@ -235,6 +235,7 @@ public class MongoToMySQL {
                             List<Record> analize = Stream.concat(previousRecords.get(sensor).stream(),records.get(sensor).stream()).collect(Collectors.toList());
                             Collections.sort(analize);
 
+                            // TODO: ver se mudamos o cálculo dos quartis
                             double q1 = calculateMedian(analize.subList(0, analize.size() / 2));
                             double q3 = calculateMedian(analize.subList(analize.size() / 2 + 1, analize.size()));
                             double aq = q3 - q1;
