@@ -219,6 +219,7 @@ public class MongoToMySQL {
                 }
             }
         }
+        recordsForGreyAlerts.clear();
     }
 
     // TODO: kinda confirmar
