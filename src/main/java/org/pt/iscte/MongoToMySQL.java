@@ -135,7 +135,7 @@ public class MongoToMySQL {
             temp.put(sensor, new ArrayList<>());
             if (!records.get(sensor).isEmpty()) {
                 try {
-                    if (previousRecords.get(sensor) == null) {
+                    if (previousRecords.get(sensor).isEmpty()) {
                         temp.get(sensor).add(records.get(sensor).get(0));
                     } else {
                         int size = previousRecords.get(sensor).size();
@@ -198,9 +198,6 @@ public class MongoToMySQL {
                         "SELECT DataHoraEscrita FROM alerta WHERE IDAlerta = (SELECT max(IDAlerta) FROM alerta WHERE IDZona = "
                                 + r.getZona().split("Z")[1] + " AND Sensor = '" + r.getSensor() + "') AND IDZona = "
                                 + r.getZona().split("Z")[1] + " AND Sensor = '" + r.getSensor() + "'");
-
-
-
 
                 if (!last.next() || new Timestamp(System.currentTimeMillis()).getTime() > (last.getTimestamp(1)
                         .getTime() + TimeUnit.MINUTES.toMillis(sql_grey_alert_delay))) {
