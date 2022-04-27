@@ -49,6 +49,7 @@ public class MongoToMySQL {
     private Map<String, ArrayList<Record>> records = new HashMap<>();
     private Map<String, ArrayList<Record>> previousRecords = new HashMap<>();
     private Map<String, Double[]> sensorsLimits = new HashMap<>();
+    private Map<String, Record> previousRecord = new HashMap<>();
     private List<Record> recordsForGreyAlerts = new ArrayList<>();
     private static final int MIN_VALUES = 3;
 
@@ -75,7 +76,8 @@ public class MongoToMySQL {
 
         for (String sensor : sensors) {
             records.put(sensor, new ArrayList<>());
-            previousRecords.put(sensor, new ArrayList<>());
+            previousRecords.put(sensor, new ArrayList<>()); // tirar daqui ao apagar os outliers1
+            previousRecord.put(sensor, null);
         }
     }
 
@@ -143,10 +145,12 @@ public class MongoToMySQL {
                         // Help to check:
                         System.out.println(previousRecords.get(sensor));
                         System.out.println(sensor + " " + records.get(sensor).get(0).getLeitura());
-                        System.out.println(sensor + " " + previousRecords.get(sensor).get(size-1).getLeitura());
+                        System.out.println(sensor + " " + previousRecords.get(sensor).get(size - 1).getLeitura());
 
-                        if (records.get(sensor).get(0).getLeitura() != previousRecords.get(sensor).get(size-1).getLeitura() &&
-                                !records.get(sensor).get(0).getHora().equals(previousRecords.get(sensor).get(size-1).getHora()))
+                        if (records.get(sensor).get(0).getLeitura() != previousRecords.get(sensor).get(size - 1)
+                                .getLeitura() &&
+                                !records.get(sensor).get(0).getHora()
+                                        .equals(previousRecords.get(sensor).get(size - 1).getHora()))
                             temp.get(sensor).add(records.get(sensor).get(0));
                     }
                     for (int i = 1; i < records.get(sensor).size(); i++) {
@@ -195,8 +199,10 @@ public class MongoToMySQL {
             while (rs.next()) {
                 ResultSet last = statement.executeQuery(
                         "SELECT DataHoraEscrita FROM alerta WHERE IDAlerta = (SELECT max(IDAlerta) FROM alerta WHERE IDZona = "
-                                + r.getZona().split("Z")[1] + " AND Sensor = '" + r.getSensor() + "'" + " AND TipoAlerta = 'C' ) AND IDZona = "
-                                + r.getZona().split("Z")[1] + " AND Sensor = '" + r.getSensor() + "'" + " AND TipoAlerta = 'C' ");
+                                + r.getZona().split("Z")[1] + " AND Sensor = '" + r.getSensor() + "'"
+                                + " AND TipoAlerta = 'C' ) AND IDZona = "
+                                + r.getZona().split("Z")[1] + " AND Sensor = '" + r.getSensor() + "'"
+                                + " AND TipoAlerta = 'C' ");
 
                 if (!last.next() || new Timestamp(System.currentTimeMillis()).getTime() > (last.getTimestamp(1)
                         .getTime() + TimeUnit.MINUTES.toMillis(sql_grey_alert_delay))) {
@@ -231,7 +237,9 @@ public class MongoToMySQL {
 
                         if (values.size() + previousRecords.get(sensor).size() > MIN_VALUES) {
 
-                            List<Record> analize = Stream.concat(previousRecords.get(sensor).stream(),records.get(sensor).stream()).collect(Collectors.toList());
+                            List<Record> analize = Stream
+                                    .concat(previousRecords.get(sensor).stream(), records.get(sensor).stream())
+                                    .collect(Collectors.toList());
                             Collections.sort(analize);
 
                             // TODO: ver se mudamos o cálculo dos quartis
@@ -246,7 +254,7 @@ public class MongoToMySQL {
                                 }
                             }
 
-                            Collections.sort(temp , new Comparator<Record>() {
+                            Collections.sort(temp, new Comparator<Record>() {
                                 public int compare(Record o1, Record o2) {
                                     return o1.getHora().compareTo(o2.getHora());
                                 }
@@ -263,6 +271,30 @@ public class MongoToMySQL {
         }
     }
 
+    public void removeOutliers2() {
+        if (!records.isEmpty()) {
+            for (String s : sensors) {
+                if (records.get(s).size() > 1) {
+                    if (previousRecord.get(s) != null) {
+                        if (Math.abs(
+                                records.get(s).get(0).getLeitura() - previousRecord.get(s).getLeitura()) > 5) {
+                            records.get(s).remove(0);
+                        }
+                    }
+                    for (int i = 1; i != records.get(s).size(); i++) {
+                        if (Math.abs(
+                                records.get(s).get(i).getLeitura() - records.get(s).get(i - 1).getLeitura()) > 5) {
+                            records.get(s).remove(i);
+                            i--;
+                        }
+                    }
+                }
+                if (!records.get(s).isEmpty())
+                    previousRecord.put(s, records.get(s).get(records.get(s).size() - 1));
+            }
+        }
+    }
+
     private static double calculateMedian(List<Record> values) {
         if (values.size() % 2 == 0)
             return (values.get(values.size() / 2).getLeitura() + values.get(values.size()
@@ -276,7 +308,8 @@ public class MongoToMySQL {
         // to be cleared)
         for (String sensor : sensors)
             if (!records.get(sensor).isEmpty())
-                previousRecords.put(sensor, (ArrayList<Record>) records.get(sensor).clone()); // "put" makes it replace the list
+                previousRecords.put(sensor, (ArrayList<Record>) records.get(sensor).clone()); // "put" makes it replace
+                                                                                              // the list
         // Note to self: clone is very needed.
     }
 
@@ -309,8 +342,9 @@ public class MongoToMySQL {
                 mongoToMySQL.getSensorsLimits();
                 mongoToMySQL.removeAnomalousValues();
                 mongoToMySQL.sendGreyAlerts();
-                mongoToMySQL.removeDuplicatedValuesAndDates();
-                mongoToMySQL.removeOutliers();
+                // mongoToMySQL.removeDuplicatedValuesAndDates();
+                // mongoToMySQL.removeOutliers();
+                mongoToMySQL.removeOutliers2();
                 mongoToMySQL.insertLastRecords();
                 mongoToMySQL.sendRecordsToMySQL();
                 for (ArrayList<Record> list : mongoToMySQL.records.values())

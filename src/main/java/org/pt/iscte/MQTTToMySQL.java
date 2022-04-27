@@ -42,7 +42,7 @@ public class MQTTToMySQL {
     private Map<String, ArrayList<Record>> previousRecords = new HashMap<>();
     private Map<String, Double[]> sensorsLimits = new HashMap<>();
 
-    private ArrayList<Record> processed = new ArrayList<>();
+    private Map<String, Record> previousRecord = new HashMap<>();
     private List<Record> recordsForGreyAlerts = new ArrayList<>();
     private static final int MIN_VALUES = 3;
 
@@ -66,6 +66,7 @@ public class MQTTToMySQL {
         for (String sensor : sensors) {
             records.put(sensor, new ArrayList<>());
             previousRecords.put(sensor, new ArrayList<>());
+            previousRecord.put(sensor, null);
         }
     }
 
@@ -106,13 +107,12 @@ public class MQTTToMySQL {
                         getSensorsLimits();
                         removeAnomalousValues();
                         sendGreyAlerts();
-                        removeDuplicatedValuesAndDates();
-
-                        removeOutliers();
+                        // removeDuplicatedValuesAndDates();
+                        // removeOutliers();
+                        removeOutliers2();
 
                         insertLastRecords();
                         sendRecordsToMySQL();
-
 
                         for (ArrayList<Record> listOfRecords : records.values())
                             listOfRecords.clear();
@@ -159,12 +159,15 @@ public class MQTTToMySQL {
                         int size = previousRecords.get(sensor).size();
 
                         // Help to check:
-                        //System.out.println(previousRecords.get(sensor));
-                        //System.out.println(sensor + " " + records.get(sensor).get(0).getLeitura());
-                        //System.out.println(sensor + " " + previousRecords.get(sensor).get(size-1).getLeitura());
+                        // System.out.println(previousRecords.get(sensor));
+                        // System.out.println(sensor + " " + records.get(sensor).get(0).getLeitura());
+                        // System.out.println(sensor + " " +
+                        // previousRecords.get(sensor).get(size-1).getLeitura());
 
-                        if (records.get(sensor).get(0).getLeitura() != previousRecords.get(sensor).get(size-1).getLeitura() &&
-                                !records.get(sensor).get(0).getHora().equals(previousRecords.get(sensor).get(size-1).getHora()))
+                        if (records.get(sensor).get(0).getLeitura() != previousRecords.get(sensor).get(size - 1)
+                                .getLeitura() &&
+                                !records.get(sensor).get(0).getHora()
+                                        .equals(previousRecords.get(sensor).get(size - 1).getHora()))
                             temp.get(sensor).add(records.get(sensor).get(0));
                     }
                     for (int i = 1; i < records.get(sensor).size(); i++) {
@@ -206,7 +209,7 @@ public class MQTTToMySQL {
 
     public void sendGreyAlerts() throws SQLException {
 
-        //System.out.println("anomalos: " + recordsForGreyAlerts);
+        // System.out.println("anomalos: " + recordsForGreyAlerts);
 
         for (Record r : recordsForGreyAlerts) {
             Statement statement = sql_connection_to.createStatement();
@@ -216,8 +219,10 @@ public class MQTTToMySQL {
             while (rs.next()) {
                 ResultSet last = statement.executeQuery(
                         "SELECT DataHoraEscrita FROM alerta WHERE IDAlerta = (SELECT max(IDAlerta) FROM alerta WHERE IDZona = "
-                                + r.getZona().split("Z")[1] + " AND Sensor = '" + r.getSensor() + "'" + " AND TipoAlerta = 'C' ) AND IDZona = "
-                                + r.getZona().split("Z")[1] + " AND Sensor = '" + r.getSensor() + "'" + " AND TipoAlerta = 'C' ");
+                                + r.getZona().split("Z")[1] + " AND Sensor = '" + r.getSensor() + "'"
+                                + " AND TipoAlerta = 'C' ) AND IDZona = "
+                                + r.getZona().split("Z")[1] + " AND Sensor = '" + r.getSensor() + "'"
+                                + " AND TipoAlerta = 'C' ");
 
                 if (!last.next() || new Timestamp(System.currentTimeMillis()).getTime() > (last.getTimestamp(1)
                         .getTime() + TimeUnit.MINUTES.toMillis(sql_grey_alert_delay))) {
@@ -253,7 +258,9 @@ public class MQTTToMySQL {
 
                         if (values.size() + previousRecords.get(sensor).size() > MIN_VALUES) {
 
-                            List<Record> analize = Stream.concat(previousRecords.get(sensor).stream(),records.get(sensor).stream()).collect(Collectors.toList());
+                            List<Record> analize = Stream
+                                    .concat(previousRecords.get(sensor).stream(), records.get(sensor).stream())
+                                    .collect(Collectors.toList());
                             Collections.sort(analize);
 
                             // TODO: ver se mudamos o cálculo dos quartis
@@ -262,17 +269,17 @@ public class MQTTToMySQL {
                             double aq = q3 - q1;
 
                             ArrayList<Record> temp = new ArrayList<>();
-                            //ArrayList<Record> temp2 = new ArrayList<>();
+                            // ArrayList<Record> temp2 = new ArrayList<>();
                             for (Record medicao : values) {
                                 if (medicao.getLeitura() >= q1 - 1.5 * aq && medicao.getLeitura() <= q3 + 1.5 * aq)
                                     temp.add(medicao);
-                                //} else
-                                  //  temp2.add(medicao);
+                                // } else
+                                // temp2.add(medicao);
                             }
 
-                            //System.out.println("outliers: " + temp2);
+                            // System.out.println("outliers: " + temp2);
 
-                            Collections.sort(temp , new Comparator<Record>() {
+                            Collections.sort(temp, new Comparator<Record>() {
                                 public int compare(Record o1, Record o2) {
                                     return o1.getHora().compareTo(o2.getHora());
                                 }
@@ -296,6 +303,30 @@ public class MQTTToMySQL {
             return values.get(values.size() / 2).getLeitura();
     }
 
+    public void removeOutliers2() {
+        if (!records.isEmpty()) {
+            for (String s : sensors) {
+                if (records.get(s).size() > 1) {
+                    if (previousRecord.get(s) != null) {
+                        if (Math.abs(
+                                records.get(s).get(0).getLeitura() - previousRecord.get(s).getLeitura()) > 5) {
+                            records.get(s).remove(0);
+                        }
+                    }
+                    for (int i = 1; i != records.get(s).size(); i++) {
+                        if (Math.abs(
+                                records.get(s).get(i).getLeitura() - records.get(s).get(i - 1).getLeitura()) > 5) {
+                            records.get(s).remove(i);
+                            i--;
+                        }
+                    }
+                }
+                if (!records.get(s).isEmpty())
+                    previousRecord.put(s, records.get(s).get(records.get(s).size() - 1));
+            }
+        }
+    }
+
     public void sendRecordsToMySQL() throws SQLException {
         for (String s : sensors) {
             for (Record m : records.get(s)) {
@@ -314,7 +345,8 @@ public class MQTTToMySQL {
         // to be cleared)
         for (String sensor : sensors)
             if (!records.get(sensor).isEmpty())
-                previousRecords.put(sensor, (ArrayList<Record>) records.get(sensor).clone()); // "put" makes it replace the list
+                previousRecords.put(sensor, (ArrayList<Record>) records.get(sensor).clone()); // "put" makes it replace
+                                                                                              // the list
         // Note to self: clone is very needed.
     }
 
