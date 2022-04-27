@@ -195,9 +195,13 @@ public class MongoToMySQL {
                             + r.getZona().split("Z")[1] + " AND Estado = 'A'");
             while (rs.next()) {
                 ResultSet last = statement.executeQuery(
-                        "SELECT DataHoraEscrita FROM alerta WHERE IDAlerta = (SELECT max(IDAlerta) FROM alerta WHERE "
+                        "SELECT DataHoraEscrita FROM alerta WHERE IDAlerta = (SELECT max(IDAlerta) FROM alerta WHERE IDZona = "
                                 + r.getZona().split("Z")[1] + " AND Sensor = '" + r.getSensor() + "') AND IDZona = "
                                 + r.getZona().split("Z")[1] + " AND Sensor = '" + r.getSensor() + "'");
+
+
+
+
                 if (!last.next() || new Timestamp(System.currentTimeMillis()).getTime() > (last.getTimestamp(1)
                         .getTime() + TimeUnit.MINUTES.toMillis(sql_grey_alert_delay))) {
                     String query = "INSERT INTO Alerta(IDZona, IDCultura, IDUtilizador, NomeCultura, Sensor, Leitura, DataHora, DataHoraEscrita, TipoAlerta, Mensagem) VALUES("
