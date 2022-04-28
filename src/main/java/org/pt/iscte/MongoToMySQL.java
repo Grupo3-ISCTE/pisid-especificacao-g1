@@ -41,6 +41,7 @@ public class MongoToMySQL {
     private final String sql_database_password_to;
     private Connection sql_connection_to;
     private int sql_grey_alert_delay;
+    private double max_growth_outliers_percentage;
 
     private final int past_minutes_for_mongo_search;
 
@@ -49,6 +50,7 @@ public class MongoToMySQL {
     private Map<String, ArrayList<Record>> records = new HashMap<>();
     private Map<String, ArrayList<Record>> previousRecords = new HashMap<>();
     private Map<String, Double[]> sensorsLimits = new HashMap<>();
+    private Map<String, Double> sensorOutlierRanges = new HashMap<>();
     private Map<String, Record> previousRecord = new HashMap<>();
     private List<Record> recordsForGreyAlerts = new ArrayList<>();
     private static final int MIN_VALUES = 3;
@@ -73,6 +75,7 @@ public class MongoToMySQL {
 
         sensors = ini.get("Mongo Origin", "mongo_sensores_from").toString().split(",");
         past_minutes_for_mongo_search = Integer.parseInt(ini.get("Java", "past_minutes_mongo_find"));
+        max_growth_outliers_percentage = 0.01*Integer.parseInt(ini.get("Java","max_growth_outliers"));
 
         for (String sensor : sensors) {
             records.put(sensor, new ArrayList<>());
@@ -172,6 +175,8 @@ public class MongoToMySQL {
         while (rs.next()) {
             sensorsLimits.put(rs.getString(2) + rs.getInt(1),
                     new Double[] { rs.getDouble(3), rs.getDouble(4) });
+            sensorOutlierRanges.put(rs.getString(2) + rs.getInt(1), max_growth_outliers_percentage*(rs.getDouble(4)-rs.getDouble(3)));
+            System.out.println(max_growth_outliers_percentage*(rs.getDouble(4)-rs.getDouble(3)));
         }
     }
 
@@ -243,8 +248,10 @@ public class MongoToMySQL {
                             Collections.sort(analize);
 
                             // TODO: ver se mudamos o cálculo dos quartis
-                            double q1 = calculateMedian(analize.subList(0, analize.size() / 2));
-                            double q3 = calculateMedian(analize.subList(analize.size() / 2 + 1, analize.size()));
+                            double q1 = analize.get((int)(Math.round(analize.size()*0.25-1))).getLeitura();
+                                    //calculateMedian(analize.subList(0, analize.size() / 2));
+                            double q3 = analize.get((int)(Math.round(analize.size()*0.75-1))).getLeitura();
+                                    //calculateMedian(analize.subList(analize.size() / 2 + 1, analize.size()));
                             double aq = q3 - q1;
 
                             ArrayList<Record> temp = new ArrayList<>();
@@ -277,13 +284,13 @@ public class MongoToMySQL {
                 if (records.get(s).size() > 1) {
                     if (previousRecord.get(s) != null) {
                         if (Math.abs(
-                                records.get(s).get(0).getLeitura() - previousRecord.get(s).getLeitura()) > 5) {
+                                records.get(s).get(0).getLeitura() - previousRecord.get(s).getLeitura()) > sensorOutlierRanges.get(s)) {
                             records.get(s).remove(0);
                         }
                     }
                     for (int i = 1; i != records.get(s).size(); i++) {
                         if (Math.abs(
-                                records.get(s).get(i).getLeitura() - records.get(s).get(i - 1).getLeitura()) > 5) {
+                                records.get(s).get(i).getLeitura() - records.get(s).get(i - 1).getLeitura()) > sensorOutlierRanges.get(s)) {
                             records.get(s).remove(i);
                             i--;
                         }
@@ -295,13 +302,13 @@ public class MongoToMySQL {
         }
     }
 
-    private static double calculateMedian(List<Record> values) {
+    /*private static double calculateMedian(List<Record> values) {
         if (values.size() % 2 == 0)
             return (values.get(values.size() / 2).getLeitura() + values.get(values.size()
                     / 2 - 1).getLeitura()) / 2;
         else
             return values.get(values.size() / 2).getLeitura();
-    }
+    }*/
 
     private void insertLastRecords() {
         // Inserts the last record of the last dump from mqtt per sensor (it never needs
