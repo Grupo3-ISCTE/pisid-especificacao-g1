@@ -109,7 +109,9 @@ public class MQTTToMySQL {
                         sendGreyAlerts();
                         // removeDuplicatedValuesAndDates();
                         // removeOutliers();
-                        removeOutliers2();
+//                        removeOutliers2();
+
+                        // generateAlertas();
 
                         insertLastRecords();
                         sendRecordsToMySQL();
@@ -303,29 +305,101 @@ public class MQTTToMySQL {
             return values.get(values.size() / 2).getLeitura();
     }
 
-    public void removeOutliers2() {
-        if (!records.isEmpty()) {
-            for (String s : sensors) {
-                if (records.get(s).size() > 1) {
-                    if (previousRecord.get(s) != null) {
-                        if (Math.abs(
-                                records.get(s).get(0).getLeitura() - previousRecord.get(s).getLeitura()) > 5) {
-                            records.get(s).remove(0);
+    public void generateAlertas() throws SQLException {
+        for (ArrayList<Record> listOfRecords : records.values())
+            //TALVEZ FAZER LISTAS JUNTANDOS TODOS OS RECORDS DAS CULTURAS DIFERETES
+            for (Record r : listOfRecords) {
+                Statement statement = sql_connection_to.createStatement();
+                ResultSet rs = statement.executeQuery("SELECT IDCultura,NomeCultura,IDUtlizador,Estado FROM Cultura WHERE IDZona = "
+                        + r.getZona());
+                while (rs.next()) {//VER SE ISTO ASSIM NAO DA PROBLEMAS COM O NEXT AO INVES DE HASNEXT. NAO VAI SALTAR UM?
+                    int estado = rs.getInt(4);
+                    if (estado == 0) {
+                        String IDCultura = rs.getString(1);
+                        String NomeCultura = rs.getString(2);
+                        String IDUtlizador = rs.getString(3);
+
+                        ResultSet limir = null;
+                        ResultSet min_max = null;
+                        if (r.getSensor().charAt(0) == 'T') {
+                            min_max = statement.executeQuery(
+                                    "SELECT TemperaturaMin, TemperaturaMax from ParametroCultura where IDCultura = " + IDCultura);
+                            limir = statement.executeQuery(
+                                    "SELECT TemperaturaLim FROM ParametroCultura WHERE IDCultura = " + IDCultura);
+                        } else if (r.getSensor().charAt(0) == 'H') {
+                            min_max = statement.executeQuery(
+                                    "SELECT HumidadeMin, HumidadeMax from ParametroCultura where IDCultura = " + IDCultura);
+                            limir = statement.executeQuery(
+                                    "SELECT HumidadeLim FROM ParametroCultura WHERE IDCultura = " + IDCultura);
+                        } else if (r.getSensor().charAt(0) == 'L') {
+                            min_max = statement.executeQuery(
+                                    "SELECT Luzmin, LuzMax from ParametroCultura where IDCultura = " + IDCultura);
+                            limir = statement.executeQuery(
+                                    "SELECT LuzLim FROM ParametroCultura WHERE IDCultura = " + IDCultura);
                         }
-                    }
-                    for (int i = 1; i != records.get(s).size(); i++) {
-                        if (Math.abs(
-                                records.get(s).get(i).getLeitura() - records.get(s).get(i - 1).getLeitura()) > 5) {
-                            records.get(s).remove(i);
-                            i--;
+
+                        double leitura = r.getLeitura();
+                        double limiar = limir.getDouble(1);
+                        double min = min_max.getDouble(1);
+                        double max = min_max.getDouble(2);
+
+                        String tipoAlerta = "";
+                        String mensagem = "";
+
+                        if ((leitura >= (min - limiar) && leitura < (min - 0.5 * limiar))
+                                || (leitura > (min + limiar * 0.5) && leitura <= (min + limiar))) {
+                            tipoAlerta = "A";
+                            mensagem = "[ALERTA Amarelo]";
+//                        } else if (leitura > (min + limiar * 0.5) && leitura <= (min + limiar)) {
+//                            tipoAlerta = "A";
+//                            mensagem = "[ALERTA Amarelo]";
+                        } else if ((leitura >= max - 0.5 * limiar && leitura <= max)
+                                || (leitura > min && leitura <= min + 0.5 * limiar)) {
+                            tipoAlerta = "L";
+                            mensagem = "[ALERTA Laranja]";
+//                        } else if (leitura > min && leitura <= min + 0.5 * limiar) {
+//                            tipoAlerta = "L";
+//                            mensagem = "[ALERTA Laranja]";
+                        } else if (leitura <= min || leitura >= max) {
+                            tipoAlerta = "V";
+                            mensagem = "[ALERTA Vermelho]";
+                        }
+
+                        if (tipoAlerta != "") {
+                            String query = "INSERT INTO Alerta(IDUtilizador,IDCultura,IDZona,IDSensor,Hora,Leitura,TipoAlerta,NomeCultura,Mensagem,HoraEscrita) " +
+                                    "VALUES(" + IDUtlizador + "," + IDCultura + "," + r.getZona() + "," + r.getSensor() + "," + r.getHora() + "," + r.getLeitura() +
+                                    "," + tipoAlerta + "," + NomeCultura + "," + mensagem + "," + new Timestamp(System.currentTimeMillis()) + ")";
+                            sql_connection_to.prepareStatement(query).execute();
+                            System.out.println("O ALERTA: " + query);
                         }
                     }
                 }
-                if (!records.get(s).isEmpty())
-                    previousRecord.put(s, records.get(s).get(records.get(s).size() - 1));
             }
-        }
     }
+
+//    public void removeOutliers2() {
+//        if (!records.isEmpty()) {
+//            for (String s : sensors) {
+//                if (records.get(s).size() > 1) {
+//                    if (previousRecord.get(s) != null) {
+//                        if (Math.abs(
+//                                records.get(s).get(0).getLeitura() - previousRecord.get(s).getLeitura()) > 5) {
+//                            records.get(s).remove(0);
+//                        }
+//                    }
+//                    for (int i = 1; i != records.get(s).size(); i++) {
+//                        if (Math.abs(
+//                                records.get(s).get(i).getLeitura() - records.get(s).get(i - 1).getLeitura()) > 5) {
+//                            records.get(s).remove(i);
+//                            i--;
+//                        }
+//                    }
+//                }
+//                if (!records.get(s).isEmpty())
+//                    previousRecord.put(s, records.get(s).get(records.get(s).size() - 1));
+//            }
+//        }
+//    }
 
     public void sendRecordsToMySQL() throws SQLException {
         for (String s : sensors) {
