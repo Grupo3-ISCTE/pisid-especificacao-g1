@@ -33,7 +33,6 @@ public class alertasDeles {
     private final String sql_database_user_to;
     private final String sql_database_password_to;
     private Connection sql_connection_to;
-    private int sql_grey_alert_delay;
 
     private final String[] sensors;
 
@@ -41,7 +40,6 @@ public class alertasDeles {
 
     private Map<String, ArrayList<Record>> records = new HashMap<>();
     private Map<String, Double[]> sensorsLimits = new HashMap<>();
-    private Map<String, Double> limiares = new HashMap<>();
 
     public alertasDeles(Ini ini) {
         cloud_topic_to = ini.get(CLOUD_DESTINATION, "cloud_topic_to");
@@ -56,7 +54,6 @@ public class alertasDeles {
         sql_database_connection_to = ini.get(MYSQL_DESTINATION, "sql_database_grupo01_connection_to");
         sql_database_user_to = ini.get(MYSQL_DESTINATION, "sql_database_user_to");
         sql_database_password_to = ini.get(MYSQL_DESTINATION, "sql_database_password_to");
-        sql_grey_alert_delay = Integer.parseInt(ini.get(MYSQL_DESTINATION, "sql_grey_alert_delay"));
 
         sensors = ini.get("Mongo Origin", "mongo_sensores_from").toString().split(",");
 
@@ -98,7 +95,9 @@ public class alertasDeles {
 
                         removeRepeatedMessages();
                         splitRecords();
+                        getSensorsLimits();
                         removeAnomalousValues();
+
 
                         generateAlerts();
 
@@ -177,67 +176,69 @@ public class alertasDeles {
             //TALVEZ FAZER LISTAS JUNTANDOS TODOS OS RECORDS DAS CULTURAS DIFERETES
             for (Record r : listOfRecords) {
                 Statement statement = sql_connection_to.createStatement();
-                ResultSet rs = statement.executeQuery("SELECT IDCultura,NomeCultura,IDUtlizador FROM Cultura WHERE IDZona = "
+                ResultSet rs = statement.executeQuery("SELECT IDCultura,NomeCultura,IDUtlizador,Estado FROM Cultura WHERE IDZona = "
                         + r.getZona());
-                String IDCultura = rs.getString(1);
-                String NomeCultura = rs.getString(2);
-                String IDUtlizador = rs.getString(3);
                 while (rs.next()) {//VER SE ISTO ASSIM NAO DA PROBLEMAS COM O NEXT AO INVES DE HASNEXT. NAO VAI SALTAR UM?
-                    ResultSet limir = null;
-                    ResultSet min_max_amarelo = null;
-                    if (r.getSensor().charAt(0) == 'T') {
-                        min_max_amarelo = statement.executeQuery(
-                                "SELECT TemperaturaMin, TemperaturaMax from ParametroCultura where IDCultura" + IDCultura
-                        );
-                        limir = statement.executeQuery(
-                                "SELECT TemperaturaLim FROM ParametroCultura WHERE IDCultura = " + IDCultura);
-                    } else if (r.getSensor().charAt(0) == 'H') {
-                        min_max_amarelo = statement.executeQuery(
-                                "SELECT HumidadeMin, HumidadeMax from ParametroCultura where IDCultura" + IDCultura
-                        );
-                        limir = statement.executeQuery(
-                                "SELECT HumidadeLim FROM ParametroCultura WHERE IDCultura = " + IDCultura);
+                    int estado = rs.getInt(4);
+                    if (estado == 0) {
+                        String IDCultura = rs.getString(1);
+                        String NomeCultura = rs.getString(2);
+                        String IDUtlizador = rs.getString(3);
 
-                    } else if (r.getSensor().charAt(0) == 'L') {
-                        min_max_amarelo = statement.executeQuery(
-                                "SELECT Luzmin, LuzMax from ParametroCultura where IDCultura" + IDCultura
-                        );
-                        limir = statement.executeQuery(
-                                "SELECT LuzLim FROM ParametroCultura WHERE IDCultura = " + IDCultura);
+                        ResultSet limir = null;
+                        ResultSet min_max = null;
+                        if (r.getSensor().charAt(0) == 'T') {
+                            min_max = statement.executeQuery(
+                                    "SELECT TemperaturaMin, TemperaturaMax from ParametroCultura where IDCultura = " + IDCultura);
+                            limir = statement.executeQuery(
+                                    "SELECT TemperaturaLim FROM ParametroCultura WHERE IDCultura = " + IDCultura);
+                        } else if (r.getSensor().charAt(0) == 'H') {
+                            min_max = statement.executeQuery(
+                                    "SELECT HumidadeMin, HumidadeMax from ParametroCultura where IDCultura = " + IDCultura);
+                            limir = statement.executeQuery(
+                                    "SELECT HumidadeLim FROM ParametroCultura WHERE IDCultura = " + IDCultura);
+                        } else if (r.getSensor().charAt(0) == 'L') {
+                            min_max = statement.executeQuery(
+                                    "SELECT Luzmin, LuzMax from ParametroCultura where IDCultura = " + IDCultura);
+                            limir = statement.executeQuery(
+                                    "SELECT LuzLim FROM ParametroCultura WHERE IDCultura = " + IDCultura);
+                        }
+
+                        double leitura = r.getLeitura();
+                        double limiar = limir.getDouble(1);
+                        double min = min_max.getDouble(1);
+                        double max = min_max.getDouble(2);
+
+                        String tipoAlerta = "";
+                        String mensagem = "";
+
+                        if ((leitura >= (min - limiar) && leitura < (min - 0.5 * limiar))
+                                || (leitura > (min + limiar * 0.5) && leitura <= (min + limiar))) {
+                            tipoAlerta = "A";
+                            mensagem = "[ALERTA Amarelo]";
+//                        } else if (leitura > (min + limiar * 0.5) && leitura <= (min + limiar)) {
+//                            tipoAlerta = "A";
+//                            mensagem = "[ALERTA Amarelo]";
+                        } else if ((leitura >= max - 0.5 * limiar && leitura <= max)
+                                || (leitura > min && leitura <= min + 0.5 * limiar)) {
+                            tipoAlerta = "L";
+                            mensagem = "[ALERTA Laranja]";
+//                        } else if (leitura > min && leitura <= min + 0.5 * limiar) {
+//                            tipoAlerta = "L";
+//                            mensagem = "[ALERTA Laranja]";
+                        } else if (leitura <= min || leitura >= max) {
+                            tipoAlerta = "V";
+                            mensagem = "[ALERTA Vermelho]";
+                        }
+
+                        if (tipoAlerta != "") {
+                            String query = "INSERT INTO Alerta(IDUtilizador,IDCultura,IDZona,IDSensor,Hora,Leitura,TipoAlerta,NomeCultura,Mensagem,HoraEscrita) " +
+                                    "VALUES(" + IDUtlizador + "," + IDCultura + "," + r.getZona() + "," + r.getSensor() + "," + r.getHora() + "," + r.getLeitura() +
+                                    "," + tipoAlerta + "," + NomeCultura + "," + mensagem + "," + new Timestamp(System.currentTimeMillis()) + ")";
+                            sql_connection_to.prepareStatement(query).execute();
+                            System.out.println("O ALERTA: " + query);
+                        }
                     }
-
-                    double leitura = r.getLeitura();
-                    double limiar = limir.getDouble(1);
-                    double min = min_max_amarelo.getDouble(1);
-                    double max = min_max_amarelo.getDouble(2);
-
-                    String tipoAlerta = "";
-                    String mensagem = "";
-
-
-
-                    //MIN
-                    //PRECISO DO ID UTILIZADOR
-                    if (leitura >= (min - limiar) && leitura < (min - 0.5 * limiar)) {
-                        tipoAlerta = "A";
-                        mensagem = "Mensagem alerta Amarelo de baixo";
-                    }
-
-                    if (leitura > (min + limiar * 0.5) && leitura <= (min + limiar)) {
-                        tipoAlerta = "A";
-                        mensagem = "Mensagem alerta Amarelo de cima";
-                    } else if () {
-
-                    }
-
-                    if (tipoAlerta != "") {
-                        String query = "INSERT INTO Alerta(IDUtilizador,IDCultura,IDZona,IDSensor,Hora,Leitura,TipoAlerta,NomeCultura,Mensagem,HoraEscrita) " +
-                                "VALUES(" + IDUtlizador + "," + IDCultura + "," + r.getZona() + "," + r.getSensor() + "," + r.getHora() + "," + r.getLeitura() +
-                                "" + tipoAlerta + "," + NomeCultura + "," + mensagem + "," + new Timestamp(System.currentTimeMillis()) + ")";
-                        sql_connection_to.prepareStatement(query).execute();
-                        System.out.println("O ALERTA: " + query);
-                    }
-
                 }
             }
     }
