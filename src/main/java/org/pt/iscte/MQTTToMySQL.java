@@ -56,7 +56,7 @@ public class MQTTToMySQL {
         sql_database_password_from = ini.get(MYSQL_ORIGIN, "sql_database_password_from");
         sql_select_table_from = ini.get(MYSQL_ORIGIN, "sql_select_from_table");
 
-        sql_database_connection_to = ini.get(MYSQL_DESTINATION, "sql_database_connection_to");
+        sql_database_connection_to = ini.get(MYSQL_DESTINATION, "sql_database_grupo01_connection_to");
         sql_database_user_to = ini.get(MYSQL_DESTINATION, "sql_database_user_to");
         sql_database_password_to = ini.get(MYSQL_DESTINATION, "sql_database_password_to");
         sql_grey_alert_delay = Integer.parseInt(ini.get(MYSQL_DESTINATION, "sql_grey_alert_delay"));
@@ -106,12 +106,9 @@ public class MQTTToMySQL {
                         splitRecords();
                         getSensorsLimits();
                         removeAnomalousValues();
-                        sendGreyAlerts();
-                        // removeDuplicatedValuesAndDates();
-                        // removeOutliers();
-//                        removeOutliers2();
+//                        sendGreyAlerts();
 
-                        // generateAlertas();
+                        generateAlertas();
 
                         insertLastRecords();
                         sendRecordsToMySQL();
@@ -190,7 +187,7 @@ public class MQTTToMySQL {
         ResultSet rs = statement.executeQuery(sql_select_table_from);
         while (rs.next()) {
             sensorsLimits.put(rs.getString(2) + rs.getInt(1),
-                    new Double[] { rs.getDouble(3), rs.getDouble(4) });
+                    new Double[]{rs.getDouble(3), rs.getDouble(4)});
         }
     }
 
@@ -248,70 +245,17 @@ public class MQTTToMySQL {
         recordsForGreyAlerts.clear();
     }
 
-    // TODO: fazer o "trigger" deles em java
-
-    public void removeOutliers() {
-        try {
-            if (!records.isEmpty()) {
-
-                for (String sensor : sensors) {
-                    if (!records.get(sensor).isEmpty()) {
-                        ArrayList<Record> values = records.get(sensor);
-
-                        if (values.size() + previousRecords.get(sensor).size() > MIN_VALUES) {
-
-                            List<Record> analize = Stream
-                                    .concat(previousRecords.get(sensor).stream(), records.get(sensor).stream())
-                                    .collect(Collectors.toList());
-                            Collections.sort(analize);
-
-                            // TODO: ver se mudamos o cálculo dos quartis
-                            double q1 = calculateMedian(analize.subList(0, analize.size() / 2));
-                            double q3 = calculateMedian(analize.subList(analize.size() / 2 + 1, analize.size()));
-                            double aq = q3 - q1;
-
-                            ArrayList<Record> temp = new ArrayList<>();
-                            // ArrayList<Record> temp2 = new ArrayList<>();
-                            for (Record medicao : values) {
-                                if (medicao.getLeitura() >= q1 - 1.5 * aq && medicao.getLeitura() <= q3 + 1.5 * aq)
-                                    temp.add(medicao);
-                                // } else
-                                // temp2.add(medicao);
-                            }
-
-                            // System.out.println("outliers: " + temp2);
-
-                            Collections.sort(temp, new Comparator<Record>() {
-                                public int compare(Record o1, Record o2) {
-                                    return o1.getHora().compareTo(o2.getHora());
-                                }
-                            });
-                            records.put(sensor, temp);
-
-                        }
-                    }
-                }
-
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-    }
-
-    private static double calculateMedian(List<Record> values) {
-        if (values.size() % 2 == 0)
-            return (values.get(values.size() / 2).getLeitura() + values.get(values.size() / 2 - 1).getLeitura()) / 2;
-        else
-            return values.get(values.size() / 2).getLeitura();
-    }
 
     public void generateAlertas() throws SQLException {
-        for (ArrayList<Record> listOfRecords : records.values())
+        System.out.println("entrei no generate alertas");
+        for (ArrayList<Record> listOfRecords : records.values()) {
+            System.out.println("a");
             //TALVEZ FAZER LISTAS JUNTANDOS TODOS OS RECORDS DAS CULTURAS DIFERETES
             for (Record r : listOfRecords) {
+                System.out.println("b");
                 Statement statement = sql_connection_to.createStatement();
-                ResultSet rs = statement.executeQuery("SELECT IDCultura,NomeCultura,IDUtlizador,Estado FROM Cultura WHERE IDZona = "
-                        + r.getZona());
+                ResultSet rs = statement.executeQuery("SELECT IDCultura,NomeCultura,IDUtilizador,Estado FROM Cultura WHERE IDZona = "
+                        + r.getZona().charAt(1));
                 while (rs.next()) {//VER SE ISTO ASSIM NAO DA PROBLEMAS COM O NEXT AO INVES DE HASNEXT. NAO VAI SALTAR UM?
                     int estado = rs.getInt(4);
                     if (estado == 0) {
@@ -319,62 +263,78 @@ public class MQTTToMySQL {
                         String NomeCultura = rs.getString(2);
                         String IDUtlizador = rs.getString(3);
 
-                        ResultSet limir = null;
-                        ResultSet min_max = null;
+                        ResultSet min_max_lim = null;
+                        System.out.println(IDCultura);
                         if (r.getSensor().charAt(0) == 'T') {
-                            min_max = statement.executeQuery(
-                                    "SELECT TemperaturaMin, TemperaturaMax from ParametroCultura where IDCultura = " + IDCultura);
-                            limir = statement.executeQuery(
-                                    "SELECT TemperaturaLim FROM ParametroCultura WHERE IDCultura = " + IDCultura);
+                            System.out.println("entrei T");
+                            min_max_lim = statement.executeQuery(
+                                    "SELECT TemperaturaMin, TemperaturaMax, TemperaturaLim from ParametroCultura where IDCultura = " + IDCultura);
                         } else if (r.getSensor().charAt(0) == 'H') {
-                            min_max = statement.executeQuery(
-                                    "SELECT HumidadeMin, HumidadeMax from ParametroCultura where IDCultura = " + IDCultura);
-                            limir = statement.executeQuery(
-                                    "SELECT HumidadeLim FROM ParametroCultura WHERE IDCultura = " + IDCultura);
+                            System.out.println("entrei H");
+                            min_max_lim = statement.executeQuery(
+                                    "SELECT HumidadeMin, HumidadeMax, HumidadeLim from ParametroCultura where IDCultura = " + IDCultura);
+
                         } else if (r.getSensor().charAt(0) == 'L') {
-                            min_max = statement.executeQuery(
-                                    "SELECT Luzmin, LuzMax from ParametroCultura where IDCultura = " + IDCultura);
-                            limir = statement.executeQuery(
-                                    "SELECT LuzLim FROM ParametroCultura WHERE IDCultura = " + IDCultura);
+                            System.out.println("entrei L");
+                            min_max_lim = statement.executeQuery(
+                                    "SELECT Luzmin, LuzMax, LuzLim from ParametroCultura where IDCultura = " + IDCultura);
                         }
 
-                        double leitura = r.getLeitura();
-                        double limiar = limir.getDouble(1);
-                        double min = min_max.getDouble(1);
-                        double max = min_max.getDouble(2);
+//                        System.out.println("c");
+                        while (min_max_lim.next()) {
+                            double leitura = r.getLeitura();
+                            System.out.println("leitura: " + leitura);
+                            double min = min_max_lim.getDouble(1);
+                            System.out.println("minimo: "+min);
+                            double max = min_max_lim.getDouble(2);
+                            System.out.println("maximo: " +  max);
+                            double limiar = min_max_lim.getDouble(3);
+                            System.out.println("limiar: "+limiar);
 
-                        String tipoAlerta = "";
-                        String mensagem = "";
 
-                        if ((leitura >= (min - limiar) && leitura < (min - 0.5 * limiar))
-                                || (leitura > (min + limiar * 0.5) && leitura <= (min + limiar))) {
-                            tipoAlerta = "A";
-                            mensagem = "[ALERTA Amarelo]";
+                            String tipoAlerta = "";
+                            String mensagem = "";
+
+
+                            System.out.println("min - limiar: " + (min - limiar));
+                            System.out.println("min - 0.5 * limiar: " + (min - 0.5 * limiar));
+
+                            if ((leitura >= (min - limiar) && leitura < (min - 0.5 * limiar))
+                                    || (leitura > (min + limiar * 0.5) && leitura <= (min + limiar))) {
+                                tipoAlerta = "A";
+                                mensagem = "[ALERTA Amarelo]";
+                                System.out.println("gerei amarelo");
 //                        } else if (leitura > (min + limiar * 0.5) && leitura <= (min + limiar)) {
 //                            tipoAlerta = "A";
 //                            mensagem = "[ALERTA Amarelo]";
-                        } else if ((leitura >= max - 0.5 * limiar && leitura <= max)
-                                || (leitura > min && leitura <= min + 0.5 * limiar)) {
-                            tipoAlerta = "L";
-                            mensagem = "[ALERTA Laranja]";
+                            } else if ((leitura >= max - 0.5 * limiar && leitura <= max)
+                                    || (leitura > min && leitura <= min + 0.5 * limiar)) {
+                                tipoAlerta = "L";
+                                mensagem = "[ALERTA Laranja]";
+                                System.out.println("gerei laranja");
 //                        } else if (leitura > min && leitura <= min + 0.5 * limiar) {
 //                            tipoAlerta = "L";
 //                            mensagem = "[ALERTA Laranja]";
-                        } else if (leitura <= min || leitura >= max) {
-                            tipoAlerta = "V";
-                            mensagem = "[ALERTA Vermelho]";
-                        }
+                            } else if (leitura <= min || leitura >= max) {
+                                tipoAlerta = "V";
+                                mensagem = "[ALERTA Vermelho]";
+                                System.out.println("gerei vermelho");
+                            }
 
-                        if (tipoAlerta != "") {
-                            String query = "INSERT INTO Alerta(IDUtilizador,IDCultura,IDZona,IDSensor,Hora,Leitura,TipoAlerta,NomeCultura,Mensagem,HoraEscrita) " +
-                                    "VALUES(" + IDUtlizador + "," + IDCultura + "," + r.getZona() + "," + r.getSensor() + "," + r.getHora() + "," + r.getLeitura() +
-                                    "," + tipoAlerta + "," + NomeCultura + "," + mensagem + "," + new Timestamp(System.currentTimeMillis()) + ")";
-                            sql_connection_to.prepareStatement(query).execute();
-                            System.out.println("O ALERTA: " + query);
+                            if (tipoAlerta != "") {
+                                String query = "INSERT INTO Alerta(IDUtilizador ,IDCultura ,IDZona,IDSensor,DataHora,Leitura,TipoAlerta,NomeCultura,Mensagem,DataHoraEscrita) " +
+                                        "VALUES(" + IDUtlizador + "," + IDCultura + "," + r.getZona().charAt(1) + ",'" + r.getSensor() + "','" + r.getHora() + "'," + r.getLeitura() +
+                                        ",'" + tipoAlerta + "','" + NomeCultura + "','" + mensagem + "','" + new Timestamp(System.currentTimeMillis()) + "')";
+                                sql_connection_to.prepareStatement(query).execute();
+                                System.out.println("O ALERTA: " + query);
+                                System.err.println("Enviei um alerta");
+                            }
                         }
+                        System.out.println("acabei o generate alertas");
                     }
                 }
             }
+        }
     }
 
 //    public void removeOutliers2() {
@@ -409,7 +369,7 @@ public class MQTTToMySQL {
                         m.getZona().split("Z")[1] + "', '" + m.getSensor() + "', '" + m.getHora()
                         + "', " + m.getLeitura() + ")";
                 sql_connection_to.prepareStatement(query).execute();
-                System.out.println("MySQL query: " + query); // AQUI
+//                System.out.println("MySQL query: " + query); // AQUI
             }
         }
     }
@@ -420,7 +380,7 @@ public class MQTTToMySQL {
         for (String sensor : sensors)
             if (!records.get(sensor).isEmpty())
                 previousRecords.put(sensor, (ArrayList<Record>) records.get(sensor).clone()); // "put" makes it replace
-                                                                                              // the list
+        // the list
         // Note to self: clone is very needed.
     }
 
