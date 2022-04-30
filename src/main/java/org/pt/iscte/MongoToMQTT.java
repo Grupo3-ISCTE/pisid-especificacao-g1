@@ -87,7 +87,10 @@ public class MongoToMQTT {
     }
 
     private BasicDBObject getCriteriaForMongoSearch() {
-        String[] date = new Timestamp(new Date(System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(-past_minutes_for_mongo_search)).getTime()).toString().split(" ");
+        String[] date = new Timestamp(
+                new Date(System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(-past_minutes_for_mongo_search))
+                        .getTime())
+                .toString().split(" ");
         date[1] = date[1].split("\\.")[0];
         String mongoDate = date[0] + "T" + date[1] + "Z";
 
