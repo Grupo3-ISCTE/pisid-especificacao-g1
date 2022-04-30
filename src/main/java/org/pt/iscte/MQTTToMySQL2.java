@@ -164,27 +164,20 @@ public class MQTTToMySQL2 {
     }
 
     public void removeOutliers2() {
-        if (!records.isEmpty()) {
-            for (String s : sensors) {
-                if (records.get(s).size() > 1) {
-                    if (previousRecord.get(s) != null) {
-                        if (Math.abs(
-                                records.get(s).get(0).getLeitura()
-                                        - previousRecord.get(s).getLeitura()) > sensorOutlierRanges.get(s)) {
-                            records.get(s).remove(0);
-                        }
-                        for (int i = 1; i != records.get(s).size(); i++) {
-                            if (Math.abs(
-                                    records.get(s).get(i).getLeitura()
-                                            - records.get(s).get(i - 1).getLeitura()) > sensorOutlierRanges.get(s)) {
-                                records.get(s).remove(i);
-                                i--;
-                            }
-                        }
-                    }
+        for (String s : sensors) {
+            if (!records.get(s).isEmpty()) {
+                // caso nao exista um previous record
+                if (previousRecord.get(s) == null)
+                    previousRecord.put(s, records.get(s).get(0));
+                // outras situações
+                for (int i = 0; i != records.get(s).size(); i++) {
+                    if (Math.abs(records.get(s).get(i).getLeitura()
+                            - previousRecord.get(s).getLeitura()) > sensorOutlierRanges.get(s)) {
+                        records.get(s).remove(i);
+                        i--;
+                    } else
+                        previousRecord.put(s, records.get(s).get(i));
                 }
-                if (!records.get(s).isEmpty())
-                    previousRecord.put(s, records.get(s).get(records.get(s).size() - 1));
             }
         }
     }

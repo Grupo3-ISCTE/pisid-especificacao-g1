@@ -14,7 +14,6 @@ import java.util.*;
 import java.util.Date;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 public class MongoToMySQL {
 
@@ -42,18 +41,13 @@ public class MongoToMySQL {
     private Connection sql_connection_to;
     private int sql_grey_alert_delay;
 
-    private double max_growth_outliers_percentage;
     private final int past_minutes_for_mongo_search;
 
     private final List<MongoCollection<Document>> collections = new ArrayList<>();
     private final String[] sensors;
     private Map<String, ArrayList<Record>> records = new HashMap<>();
-    private Map<String, ArrayList<Record>> previousRecords = new HashMap<>();
     private Map<String, Double[]> sensorsLimits = new HashMap<>();
-    private Map<String, Double> sensorOutlierRanges = new HashMap<>();
-    private Map<String, Record> previousRecord = new HashMap<>();
     private List<Record> recordsForGreyAlerts = new ArrayList<>();
-    private static final int MIN_VALUES = 3;
 
     public MongoToMySQL(Ini ini) {
         mongo_address_to = ini.get(MONGO_DESTINATION, "mongo_address_to");
@@ -75,13 +69,9 @@ public class MongoToMySQL {
 
         sensors = ini.get("Mongo Origin", "mongo_sensores_from").toString().split(",");
         past_minutes_for_mongo_search = Integer.parseInt(ini.get("Java", "past_minutes_mongo_find"));
-        max_growth_outliers_percentage = 0.01 * Integer.parseInt(ini.get("Java", "max_growth_outliers"));
 
-        for (String sensor : sensors) {
+        for (String sensor : sensors)
             records.put(sensor, new ArrayList<>());
-            previousRecords.put(sensor, new ArrayList<>()); // tirar daqui ao apagar os outliers1
-            previousRecord.put(sensor, null);
-        }
     }
 
     public void connectToMongo() {
@@ -128,45 +118,9 @@ public class MongoToMySQL {
                 Record m = new Record(r);
                 this.records.get(m.getSensor()).add(m);
                 c.updateOne(r, new BasicDBObject().append("$inc", new BasicDBObject().append("Migrado", 1)));
-                System.out.println(r); // AQUI
+                // System.out.println(r); // AQUI
             }
         }
-    }
-
-    // Removes both duplicated readings and duplicated timestamps
-    public void removeDuplicatedValuesAndDates() {
-        Map<String, ArrayList<Record>> temp = new HashMap<>();
-        for (String sensor : sensors) {
-            temp.put(sensor, new ArrayList<>());
-            if (!records.get(sensor).isEmpty()) {
-                try {
-                    if (previousRecords.get(sensor).isEmpty()) {
-                        temp.get(sensor).add(records.get(sensor).get(0));
-                    } else {
-                        int size = previousRecords.get(sensor).size();
-
-                        // Help to check:
-                        System.out.println(previousRecords.get(sensor));
-                        System.out.println(sensor + " " + records.get(sensor).get(0).getLeitura());
-                        System.out.println(sensor + " " + previousRecords.get(sensor).get(size - 1).getLeitura());
-
-                        if (records.get(sensor).get(0).getLeitura() != previousRecords.get(sensor).get(size - 1)
-                                .getLeitura() &&
-                                !records.get(sensor).get(0).getHora()
-                                        .equals(previousRecords.get(sensor).get(size - 1).getHora()))
-                            temp.get(sensor).add(records.get(sensor).get(0));
-                    }
-                    for (int i = 1; i < records.get(sensor).size(); i++) {
-                        if (records.get(sensor).get(i).getLeitura() != records.get(sensor).get(i - 1).getLeitura() &&
-                                !records.get(sensor).get(i).getHora().equals(records.get(sensor).get(i - 1).getHora()))
-                            temp.get(sensor).add(records.get(sensor).get(i));
-                    }
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
-            }
-        }
-        records = temp;
     }
 
     public void getSensorsLimits() throws SQLException {
@@ -175,8 +129,6 @@ public class MongoToMySQL {
         while (rs.next()) {
             sensorsLimits.put(rs.getString(2) + rs.getInt(1),
                     new Double[] { rs.getDouble(3), rs.getDouble(4) });
-            sensorOutlierRanges.put(rs.getString(2) + rs.getInt(1),
-                    max_growth_outliers_percentage * (rs.getDouble(4) - rs.getDouble(3)));
         }
     }
 
@@ -233,82 +185,38 @@ public class MongoToMySQL {
     }
 
     public void removeOutliers() {
-        try {
-            if (!records.isEmpty()) {
-
-                for (String sensor : sensors) {
-                    if (!records.get(sensor).isEmpty()) {
-                        ArrayList<Record> values = records.get(sensor);
-
-                        if (values.size() + previousRecords.get(sensor).size() > MIN_VALUES) {
-
-                            List<Record> analize = Stream
-                                    .concat(previousRecords.get(sensor).stream(), records.get(sensor).stream())
-                                    .collect(Collectors.toList());
-                            Collections.sort(analize);
-
-                            double q1 = analize.get((int) (Math.round(analize.size() * 0.25 - 1))).getLeitura();
-                            double q3 = analize.get((int) (Math.round(analize.size() * 0.75 - 1))).getLeitura();
-                            double aq = q3 - q1;
-
-                            ArrayList<Record> temp = new ArrayList<>();
-                            for (Record medicao : values) {
-                                if (medicao.getLeitura() >= q1 - 1.5 * aq && medicao.getLeitura() <= q3 + 1.5 * aq) {
-                                    temp.add(medicao);
-                                }
-                            }
-
-                            Collections.sort(temp, new Comparator<Record>() {
-                                public int compare(Record o1, Record o2) {
-                                    return o1.getHora().compareTo(o2.getHora());
-                                }
-                            });
-                            records.put(sensor, temp);
-
-                        }
-                    }
-                }
-
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-    }
-
-    public void removeOutliers2() {
         if (!records.isEmpty()) {
             for (String s : sensors) {
-                if (records.get(s).size() > 1) {
-                    if (previousRecord.get(s) != null) {
-                        if (Math.abs(
-                                records.get(s).get(0).getLeitura()
-                                        - previousRecord.get(s).getLeitura()) > sensorOutlierRanges.get(s)) {
-                            records.get(s).remove(0);
-                        }
-                        for (int i = 1; i != records.get(s).size(); i++) {
-                            if (Math.abs(
-                                    records.get(s).get(i).getLeitura()
-                                            - records.get(s).get(i - 1).getLeitura()) > sensorOutlierRanges.get(s)) {
-                                records.get(s).remove(i);
-                                i--;
-                            }
+                if (!records.get(s).isEmpty()) {
+                    List<Record> analize = findDuplicateValuesToCalculateOutliers(records.get(s)).stream()
+                            .collect(Collectors.toList());
+                    Collections.sort(analize);
+
+                    double q1 = analize.get((int) ((analize.size() - 1) * 0.25)).getLeitura();
+                    double q3 = analize.get((int) ((analize.size() - 1) * 0.75)).getLeitura();
+                    double aq = q3 - q1;
+
+                    for (int i = 0; i != records.get(s).size(); i++) {
+                        if (records.get(s).get(i).getLeitura() < (q1 - 1.5 * aq)
+                                || records.get(s).get(i).getLeitura() > (q3 + 1.5 * aq)) {
+                            records.get(s).remove(i);
+                            i--;
                         }
                     }
                 }
-                if (!records.get(s).isEmpty())
-                    previousRecord.put(s, records.get(s).get(records.get(s).size() - 1));
             }
         }
     }
 
-    private void insertLastRecords() {
-        // Inserts the last record of the last dump from mqtt per sensor (it never needs
-        // to be cleared)
-        for (String sensor : sensors)
-            if (!records.get(sensor).isEmpty())
-                previousRecords.put(sensor, (ArrayList<Record>) records.get(sensor).clone()); // "put" makes it replace
-                                                                                              // the list
-        // Note to self: clone is very needed.
+    public List<Record> findDuplicateValuesToCalculateOutliers(List<Record> medicoes) {
+        List<Record> temp = new ArrayList<>();
+        temp.add(medicoes.get(0));
+        for (int i = 1; i < medicoes.size(); i++)
+            if (medicoes.get(i).getLeitura() != medicoes.get(i - 1)
+                    .getLeitura()) {
+                temp.add(medicoes.get(i));
+            }
+        return temp;
     }
 
     public void sendRecordsToMySQL() throws SQLException {
@@ -323,6 +231,7 @@ public class MongoToMySQL {
                 System.out.println("MySQL query: " + query);
             }
         }
+        System.out.println("");
     }
 
     public static void main(String args[]) {
@@ -340,10 +249,7 @@ public class MongoToMySQL {
                 mongoToMySQL.getSensorsLimits();
                 mongoToMySQL.removeAnomalousValues();
                 mongoToMySQL.sendGreyAlerts();
-                // mongoToMySQL.removeDuplicatedValuesAndDates();
-                // mongoToMySQL.removeOutliers();
-                mongoToMySQL.removeOutliers2();
-                mongoToMySQL.insertLastRecords();
+                mongoToMySQL.removeOutliers();
                 mongoToMySQL.sendRecordsToMySQL();
                 for (ArrayList<Record> list : mongoToMySQL.records.values())
                     list.clear();
