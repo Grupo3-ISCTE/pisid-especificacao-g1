@@ -1,5 +1,6 @@
 package org.pt.iscte;
 
+import org.apache.commons.lang3.time.DateUtils;
 import org.bson.Document;
 import org.eclipse.paho.client.mqttv3.*;
 import org.ini4j.Ini;
@@ -242,7 +243,10 @@ public class MQTTToMySQL2 {
                                         + ",'"
                                         + r.getSensor() + "','" + r.getHora() + "'," + r.getLeitura() +
                                         ",'" + tipoAlerta + "','" + NomeCultura + "','" + mensagem + "','"
-                                        + new Timestamp(System.currentTimeMillis()) + "')";
+                                        + new Timestamp(DateUtils
+                                                .round(new Timestamp(System.currentTimeMillis()), Calendar.SECOND)
+                                                .getTime())
+                                        + "')";
                                 sql_connection_to.prepareStatement(query).execute();
                                 System.out.println("Alert Query: " + query);
                             }

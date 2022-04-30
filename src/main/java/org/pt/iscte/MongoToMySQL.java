@@ -5,6 +5,7 @@ import com.mongodb.client.FindIterable;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
 
+import org.apache.commons.lang3.time.DateUtils;
 import org.bson.Document;
 import org.ini4j.Ini;
 
@@ -14,6 +15,10 @@ import java.util.*;
 import java.util.Date;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
+import java.util.Calendar;
 
 public class MongoToMySQL {
 
@@ -171,13 +176,14 @@ public class MongoToMySQL {
                             + r.getSensor() + "', "
                             + r.getLeitura() + ", '"
                             + r.getHora() + "', '"
-                            + new Timestamp(System.currentTimeMillis())
+                            + new Timestamp(DateUtils.round(new Timestamp(System.currentTimeMillis()), Calendar.SECOND)
+                                    .getTime())
                             + "', '"
                             + "C" + "', '"
                             + "Potencial avaria detetada no sensor " + r.getSensor() + " da Zona "
                             + r.getZona().split("Z")[1] + " onde se encontra(m) a(s) sua(s) cultura(s)." + "')";
-                    sql_connection_to.prepareStatement(query).execute();
                     System.out.println("Grey Alert: " + query);
+                    sql_connection_to.prepareStatement(query).execute();
                 }
             }
         }
@@ -247,7 +253,7 @@ public class MongoToMySQL {
             while (true) {
                 mongoToMySQL.findAndSendLastRecords();
                 mongoToMySQL.getSensorsLimits();
-                mongoToMySQL.removeOutliers(); // remover antes tmb porque -1 -1 -1 -1 14 14 14 14 14 -1 -1 -1 -1 (H1)
+                mongoToMySQL.removeOutliers(); // remover antes tmb porque 0 -1 -1 -1 -1 14 14 14 14 14 -1 -1 -1 -1 (H1)
                 mongoToMySQL.removeAnomalousValues();
                 mongoToMySQL.sendGreyAlerts();
                 mongoToMySQL.removeOutliers();
