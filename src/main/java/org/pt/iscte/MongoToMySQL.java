@@ -16,8 +16,6 @@ import java.util.Date;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
-import java.text.ParseException;
-import java.text.SimpleDateFormat;
 import java.util.Calendar;
 
 public class MongoToMySQL {
@@ -48,6 +46,7 @@ public class MongoToMySQL {
 
     private final int past_minutes_for_mongo_search;
 
+    private Map<String, ArrayList<Record>> previousRecords = new HashMap<>();
     private final List<MongoCollection<Document>> collections = new ArrayList<>();
     private final String[] sensors;
     private Map<String, ArrayList<Record>> records = new HashMap<>();
@@ -75,8 +74,10 @@ public class MongoToMySQL {
         sensors = ini.get("Mongo Origin", "mongo_sensores_from").toString().split(",");
         past_minutes_for_mongo_search = Integer.parseInt(ini.get("Java", "past_minutes_mongo_find"));
 
-        for (String sensor : sensors)
+        for (String sensor : sensors) {
+            previousRecords.put(sensor, new ArrayList<>());
             records.put(sensor, new ArrayList<>());
+        }
     }
 
     public void connectToMongo() {
@@ -182,7 +183,7 @@ public class MongoToMySQL {
                             + "C" + "', '"
                             + "Potencial avaria detetada no sensor " + r.getSensor() + " da Zona "
                             + r.getZona().split("Z")[1] + " onde se encontra(m) a(s) sua(s) cultura(s)." + "')";
-                    System.out.println("Grey Alert: " + query);
+                    // System.out.println("Grey Alert: " + query);
                     sql_connection_to.prepareStatement(query).execute();
                 }
             }
@@ -194,7 +195,15 @@ public class MongoToMySQL {
         if (!records.isEmpty()) {
             for (String s : sensors) {
                 if (!records.get(s).isEmpty()) {
-                    List<Record> analize = findDuplicateValuesToCalculateOutliers(records.get(s)).stream()
+                    List<Record> temp = new ArrayList<>();
+                    if (records.get(s).size() < 4) {
+                        temp.addAll(records.get(s));
+                        if (previousRecords.get(s) != null)
+                            temp.addAll(previousRecords.get(s));
+                    } else
+                        temp = records.get(s);
+
+                    List<Record> analize = findDuplicateValuesToCalculateOutliers(temp).stream()
                             .collect(Collectors.toList());
                     Collections.sort(analize);
 
@@ -205,6 +214,7 @@ public class MongoToMySQL {
                     for (int i = 0; i != records.get(s).size(); i++) {
                         if (records.get(s).get(i).getLeitura() < (q1 - 1.5 * aq)
                                 || records.get(s).get(i).getLeitura() > (q3 + 1.5 * aq)) {
+                            System.out.println("Removi: " + records.get(s).get(i));
                             records.get(s).remove(i);
                             i--;
                         }
@@ -213,6 +223,25 @@ public class MongoToMySQL {
             }
         }
     }
+
+    // public void removeOutliers2() {
+    // for (String s : sensors) {
+    // if (!records.get(s).isEmpty()) {
+    // // caso nao exista um previous record
+    // if (previousRecord.get(s) == null)
+    // previousRecord.put(s, records.get(s).get(0));
+    // // outras situações
+    // for (int i = 0; i != records.get(s).size(); i++) {
+    // if (Math.abs(records.get(s).get(i).getLeitura()
+    // - previousRecord.get(s).getLeitura()) > sensorOutlierRanges.get(s)) {
+    // records.get(s).remove(i);
+    // i--;
+    // } else
+    // previousRecord.put(s, records.get(s).get(i));
+    // }
+    // }
+    // }
+    // }
 
     public List<Record> findDuplicateValuesToCalculateOutliers(List<Record> rec) {
         List<Record> temp = new ArrayList<>();
@@ -225,6 +254,13 @@ public class MongoToMySQL {
         return temp;
     }
 
+    private void insertLastRecords() {
+        previousRecords.clear();
+        for (String s : sensors)
+            if (!records.get(s).isEmpty())
+                previousRecords.put(s, records.get(s));
+    }
+
     public void sendRecordsToMySQL() throws SQLException {
         for (String s : sensors) {
             for (Record m : records.get(s)) {
@@ -234,10 +270,10 @@ public class MongoToMySQL {
                         m.getLeitura()
                         + ")";
                 sql_connection_to.prepareStatement(query).execute();
-                System.out.println("MySQL query: " + query);
+                // System.out.println("MySQL query: " + query);
             }
         }
-        System.out.println("");
+        System.out.println();
     }
 
     public static void main(String args[]) {
@@ -257,6 +293,7 @@ public class MongoToMySQL {
                 mongoToMySQL.removeAnomalousValues();
                 mongoToMySQL.sendGreyAlerts();
                 mongoToMySQL.removeOutliers();
+                mongoToMySQL.insertLastRecords();
                 mongoToMySQL.sendRecordsToMySQL();
                 for (ArrayList<Record> list : mongoToMySQL.records.values())
                     list.clear();
