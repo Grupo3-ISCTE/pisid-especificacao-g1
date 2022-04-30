@@ -208,13 +208,13 @@ public class MongoToMySQL {
         }
     }
 
-    public List<Record> findDuplicateValuesToCalculateOutliers(List<Record> medicoes) {
+    public List<Record> findDuplicateValuesToCalculateOutliers(List<Record> rec) {
         List<Record> temp = new ArrayList<>();
-        temp.add(medicoes.get(0));
-        for (int i = 1; i < medicoes.size(); i++)
-            if (medicoes.get(i).getLeitura() != medicoes.get(i - 1)
+        temp.add(rec.get(0));
+        for (int i = 1; i < rec.size(); i++)
+            if (rec.get(i).getLeitura() != rec.get(i - 1)
                     .getLeitura()) {
-                temp.add(medicoes.get(i));
+                temp.add(rec.get(i));
             }
         return temp;
     }
@@ -247,6 +247,7 @@ public class MongoToMySQL {
             while (true) {
                 mongoToMySQL.findAndSendLastRecords();
                 mongoToMySQL.getSensorsLimits();
+                mongoToMySQL.removeOutliers(); // remover antes tmb porque -1 -1 -1 -1 14 14 14 14 14 -1 -1 -1 -1 (H1)
                 mongoToMySQL.removeAnomalousValues();
                 mongoToMySQL.sendGreyAlerts();
                 mongoToMySQL.removeOutliers();
