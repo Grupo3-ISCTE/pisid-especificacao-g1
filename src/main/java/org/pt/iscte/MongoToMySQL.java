@@ -178,12 +178,12 @@ public class MongoToMySQL {
                             + r.getLeitura() + ", '"
                             + r.getHora() + "', '"
                             + new Timestamp(DateUtils.round(new Timestamp(System.currentTimeMillis()), Calendar.SECOND)
-                                    .getTime())
+                                    .getTime() + 1000)
                             + "', '"
                             + "C" + "', '"
                             + "Potencial avaria detetada no sensor " + r.getSensor() + " da Zona "
                             + r.getZona().split("Z")[1] + " onde se encontra(m) a(s) sua(s) cultura(s)." + "')";
-                    // System.out.println("Grey Alert: " + query);
+                    System.out.println("Grey Alert: " + query);
                     sql_connection_to.prepareStatement(query).execute();
                 }
             }

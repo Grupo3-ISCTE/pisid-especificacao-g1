@@ -245,7 +245,7 @@ public class MQTTToMySQL2 {
                                         ",'" + tipoAlerta + "','" + NomeCultura + "','" + mensagem + "','"
                                         + new Timestamp(DateUtils
                                                 .round(new Timestamp(System.currentTimeMillis()), Calendar.SECOND)
-                                                .getTime())
+                                                .getTime() + 1000)
                                         + "')";
                                 sql_connection_to.prepareStatement(query).execute();
                                 System.out.println("Alert Query: " + query);
