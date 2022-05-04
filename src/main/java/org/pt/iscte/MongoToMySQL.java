@@ -196,7 +196,7 @@ public class MongoToMySQL {
             for (String s : sensors) {
                 if (!records.get(s).isEmpty()) {
                     List<Record> temp = new ArrayList<>();
-                    if (records.get(s).size() < 4) {
+                    if (records.get(s).size() < 4) { //TODO: ALTERAR INI
                         temp.addAll(records.get(s));
                         if (previousRecords.get(s) != null)
                             temp.addAll(previousRecords.get(s));
@@ -223,25 +223,6 @@ public class MongoToMySQL {
             }
         }
     }
-
-    // public void removeOutliers2() {
-    // for (String s : sensors) {
-    // if (!records.get(s).isEmpty()) {
-    // // caso nao exista um previous record
-    // if (previousRecord.get(s) == null)
-    // previousRecord.put(s, records.get(s).get(0));
-    // // outras situações
-    // for (int i = 0; i != records.get(s).size(); i++) {
-    // if (Math.abs(records.get(s).get(i).getLeitura()
-    // - previousRecord.get(s).getLeitura()) > sensorOutlierRanges.get(s)) {
-    // records.get(s).remove(i);
-    // i--;
-    // } else
-    // previousRecord.put(s, records.get(s).get(i));
-    // }
-    // }
-    // }
-    // }
 
     public List<Record> findDuplicateValuesToCalculateOutliers(List<Record> rec) {
         List<Record> temp = new ArrayList<>();
