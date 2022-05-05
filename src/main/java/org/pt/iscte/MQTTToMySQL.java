@@ -33,18 +33,15 @@ public class MQTTToMySQL {
     private final String sql_database_password_to;
     private Connection sql_connection_to;
     private int sql_grey_alert_delay;
+    private int max_number_of_recs_to_use_past_recs;
 
-    private double max_growth_outliers_percentage;
     private final String[] sensors;
     private final List<Document> receivedMessages = new ArrayList<>();
-
     private Map<String, ArrayList<Record>> records = new HashMap<>();
     private Map<String, ArrayList<Record>> previousRecords = new HashMap<>();
     private Map<String, Double[]> sensorsLimits = new HashMap<>();
-    private Map<String, Double> sensorOutlierRanges = new HashMap<>();
-    private Map<String, Record> previousRecord = new HashMap<>();
     private List<Record> recordsForGreyAlerts = new ArrayList<>();
-    private static final int MIN_VALUES = 3;
+
 
     public MQTTToMySQL(Ini ini) {
         cloud_topic_to = ini.get(CLOUD_DESTINATION, "cloud_topic_to");
@@ -62,12 +59,11 @@ public class MQTTToMySQL {
         sql_grey_alert_delay = Integer.parseInt(ini.get(MYSQL_DESTINATION, "sql_grey_alert_delay"));
 
         sensors = ini.get("Mongo Origin", "mongo_sensores_from").toString().split(",");
-        max_growth_outliers_percentage = 0.01 * Integer.parseInt(ini.get("Java", "max_growth_outliers"));
+        max_number_of_recs_to_use_past_recs = Integer.parseInt(ini.get("Java", "max_number_of_recs_to_use_past_recs"));
 
         for (String sensor : sensors) {
-            records.put(sensor, new ArrayList<>());
             previousRecords.put(sensor, new ArrayList<>());
-            previousRecord.put(sensor, null);
+            records.put(sensor, new ArrayList<>());
         }
     }
 
@@ -104,12 +100,11 @@ public class MQTTToMySQL {
                         removeRepeatedMessages();
                         splitRecords();
                         getSensorsLimits();
+                        removeDuplicatedDates();
+                        removeOutliers(); // remover antes tmb porque 0 -1 -1 -1 -1 14 14 14 14 14 -1 -1 -1 -1 (H1)
                         removeAnomalousValues();
                         sendGreyAlerts();
-                        // removeDuplicatedValuesAndDates();
-                        // removeOutliers();
-                        removeOutliers2();
-
+                        removeOutliers();
                         insertLastRecords();
                         sendRecordsToMySQL();
 
@@ -145,8 +140,8 @@ public class MQTTToMySQL {
         }
     }
 
-    // Removes both duplicated readings and duplicated timestamps
-    public void removeDuplicatedValuesAndDates() {
+    // Removes duplicated timestamps
+    public void removeDuplicatedDates() {
         Map<String, ArrayList<Record>> temp = new HashMap<>();
         for (String sensor : sensors) {
             temp.put(sensor, new ArrayList<>());
@@ -156,22 +151,11 @@ public class MQTTToMySQL {
                         temp.get(sensor).add(records.get(sensor).get(0));
                     } else {
                         int size = previousRecords.get(sensor).size();
-
-                        // Help to check:
-                        // System.out.println(previousRecords.get(sensor));
-                        // System.out.println(sensor + " " + records.get(sensor).get(0).getLeitura());
-                        // System.out.println(sensor + " " +
-                        // previousRecords.get(sensor).get(size-1).getLeitura());
-
-                        if (records.get(sensor).get(0).getLeitura() != previousRecords.get(sensor).get(size - 1)
-                                .getLeitura() &&
-                                !records.get(sensor).get(0).getHora()
-                                        .equals(previousRecords.get(sensor).get(size - 1).getHora()))
+                        if (!records.get(sensor).get(0).getHora().equals(previousRecords.get(sensor).get(size - 1).getHora()))
                             temp.get(sensor).add(records.get(sensor).get(0));
                     }
                     for (int i = 1; i < records.get(sensor).size(); i++) {
-                        if (records.get(sensor).get(i).getLeitura() != records.get(sensor).get(i - 1).getLeitura() &&
-                                !records.get(sensor).get(i).getHora().equals(records.get(sensor).get(i - 1).getHora()))
+                        if (!records.get(sensor).get(i).getHora().equals(records.get(sensor).get(i - 1).getHora()))
                             temp.get(sensor).add(records.get(sensor).get(i));
                     }
                 } catch (Exception e) {
@@ -188,8 +172,6 @@ public class MQTTToMySQL {
         while (rs.next()) {
             sensorsLimits.put(rs.getString(2) + rs.getInt(1),
                     new Double[] { rs.getDouble(3), rs.getDouble(4) });
-            sensorOutlierRanges.put(rs.getString(2) + rs.getInt(1),
-                    max_growth_outliers_percentage * (rs.getDouble(4) - rs.getDouble(3)));
         }
     }
 
@@ -245,63 +227,47 @@ public class MQTTToMySQL {
     }
 
     public void removeOutliers() {
-        try {
-            if (!records.isEmpty()) {
-                for (String sensor : sensors) {
-                    if (!records.get(sensor).isEmpty()) {
-                        ArrayList<Record> values = records.get(sensor);
+        if (!records.isEmpty()) {
+            for (String s : sensors) {
+                if (!records.get(s).isEmpty()) {
+                    List<Record> temp = new ArrayList<>();
+                    if (records.get(s).size() < max_number_of_recs_to_use_past_recs) {
+                        temp.addAll(records.get(s));
+                        if (previousRecords.get(s) != null)
+                            temp.addAll(previousRecords.get(s));
+                    } else
+                        temp = records.get(s);
 
-                        if (values.size() + previousRecords.get(sensor).size() > MIN_VALUES) {
-                            List<Record> analize = Stream
-                                    .concat(previousRecords.get(sensor).stream(), records.get(sensor).stream())
-                                    .collect(Collectors.toList());
-                            Collections.sort(analize);
+                    List<Record> analize = findDuplicateValuesToCalculateOutliers(temp).stream()
+                            .collect(Collectors.toList());
+                    Collections.sort(analize);
 
-                            double q1 = analize.get((int) (Math.round(analize.size() * 0.25 - 1))).getLeitura();
-                            double q3 = analize.get((int) (Math.round(analize.size() * 0.75 - 1))).getLeitura();
-                            double aq = q3 - q1;
+                    double q1 = analize.get((int) ((analize.size() - 1) * 0.25)).getLeitura();
+                    double q3 = analize.get((int) ((analize.size() - 1) * 0.75)).getLeitura();
+                    double aq = q3 - q1;
 
-                            ArrayList<Record> temp = new ArrayList<>();
-                            for (Record medicao : values) {
-                                if (medicao.getLeitura() >= q1 - 1.5 * aq && medicao.getLeitura() <= q3 + 1.5 * aq) {
-                                    temp.add(medicao);
-                                }
-                            }
-
-                            Collections.sort(temp, new Comparator<Record>() {
-                                public int compare(Record o1, Record o2) {
-                                    return o1.getHora().compareTo(o2.getHora());
-                                }
-                            });
-                            records.put(sensor, temp);
-
+                    for (int i = 0; i != records.get(s).size(); i++) {
+                        if (records.get(s).get(i).getLeitura() < (q1 - 1.5 * aq)
+                                || records.get(s).get(i).getLeitura() > (q3 + 1.5 * aq)) {
+                            System.out.println("Removi: " + records.get(s).get(i));
+                            records.get(s).remove(i);
+                            i--;
                         }
                     }
                 }
-
             }
-        } catch (Exception e) {
-            e.printStackTrace();
         }
     }
 
-    public void removeOutliers2() {
-        for (String s : sensors) {
-            if (!records.get(s).isEmpty()) {
-                // caso nao exista um previous record
-                if (previousRecord.get(s) == null)
-                    previousRecord.put(s, records.get(s).get(0));
-                // outras situações
-                for (int i = 0; i != records.get(s).size(); i++) {
-                    if (Math.abs(records.get(s).get(i).getLeitura()
-                            - previousRecord.get(s).getLeitura()) > sensorOutlierRanges.get(s)) {
-                        records.get(s).remove(i);
-                        i--;
-                    } else
-                        previousRecord.put(s, records.get(s).get(i));
-                }
+    public List<Record> findDuplicateValuesToCalculateOutliers(List<Record> rec) {
+        List<Record> temp = new ArrayList<>();
+        temp.add(rec.get(0));
+        for (int i = 1; i < rec.size(); i++)
+            if (rec.get(i).getLeitura() != rec.get(i - 1)
+                    .getLeitura()) {
+                temp.add(rec.get(i));
             }
-        }
+        return temp;
     }
 
     public void sendRecordsToMySQL() throws SQLException {
@@ -317,13 +283,10 @@ public class MQTTToMySQL {
     }
 
     private void insertLastRecords() {
-        // Inserts the last record of the last dump from mqtt per sensor (it never needs
-        // to be cleared)
-        for (String sensor : sensors)
-            if (!records.get(sensor).isEmpty())
-                previousRecords.put(sensor, (ArrayList<Record>) records.get(sensor).clone()); // "put" makes it replace
-                                                                                              // the list
-        // Note to self: clone is very needed.
+        previousRecords.clear();
+        for (String s : sensors)
+            if (!records.get(s).isEmpty())
+                previousRecords.put(s, records.get(s));
     }
 
     public static void main(String[] args) {

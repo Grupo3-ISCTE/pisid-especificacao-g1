@@ -43,8 +43,8 @@ public class MongoToMySQL {
     private final String sql_database_password_to;
     private Connection sql_connection_to;
     private int sql_grey_alert_delay;
-
     private final int past_minutes_for_mongo_search;
+    private int max_number_of_recs_to_use_past_recs;
 
     private Map<String, ArrayList<Record>> previousRecords = new HashMap<>();
     private final List<MongoCollection<Document>> collections = new ArrayList<>();
@@ -73,6 +73,7 @@ public class MongoToMySQL {
 
         sensors = ini.get("Mongo Origin", "mongo_sensores_from").toString().split(",");
         past_minutes_for_mongo_search = Integer.parseInt(ini.get("Java", "past_minutes_mongo_find"));
+        max_number_of_recs_to_use_past_recs = Integer.parseInt(ini.get("Java", "max_number_of_recs_to_use_past_recs"));
 
         for (String sensor : sensors) {
             previousRecords.put(sensor, new ArrayList<>());
@@ -138,6 +139,31 @@ public class MongoToMySQL {
         }
     }
 
+    public void removeDuplicatedDates() {
+        Map<String, ArrayList<Record>> temp = new HashMap<>();
+        for (String sensor : sensors) {
+            temp.put(sensor, new ArrayList<>());
+            if (!records.get(sensor).isEmpty()) {
+                try {
+                    if (previousRecords.get(sensor).isEmpty()) {
+                        temp.get(sensor).add(records.get(sensor).get(0));
+                    } else {
+                        int size = previousRecords.get(sensor).size();
+                        if (!records.get(sensor).get(0).getHora().equals(previousRecords.get(sensor).get(size - 1).getHora()))
+                            temp.get(sensor).add(records.get(sensor).get(0));
+                    }
+                    for (int i = 1; i < records.get(sensor).size(); i++) {
+                        if (!records.get(sensor).get(i).getHora().equals(records.get(sensor).get(i - 1).getHora()))
+                            temp.get(sensor).add(records.get(sensor).get(i));
+                    }
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+        records = temp;
+    }
+
     public void removeAnomalousValues() {
         for (String s : sensors) {
             if (!records.get(s).isEmpty()) {
@@ -196,7 +222,7 @@ public class MongoToMySQL {
             for (String s : sensors) {
                 if (!records.get(s).isEmpty()) {
                     List<Record> temp = new ArrayList<>();
-                    if (records.get(s).size() < 4) { //TODO: ALTERAR INI
+                    if (records.get(s).size() < max_number_of_recs_to_use_past_recs) {
                         temp.addAll(records.get(s));
                         if (previousRecords.get(s) != null)
                             temp.addAll(previousRecords.get(s));
@@ -270,6 +296,7 @@ public class MongoToMySQL {
             while (true) {
                 mongoToMySQL.findAndSendLastRecords();
                 mongoToMySQL.getSensorsLimits();
+                mongoToMySQL.removeDuplicatedDates();
                 mongoToMySQL.removeOutliers(); // remover antes tmb porque 0 -1 -1 -1 -1 14 14 14 14 14 -1 -1 -1 -1 (H1)
                 mongoToMySQL.removeAnomalousValues();
                 mongoToMySQL.sendGreyAlerts();
