@@ -147,9 +147,11 @@ public class MQTTToMySQL {
             temp.put(sensor, new ArrayList<>());
             if (!records.get(sensor).isEmpty()) {
                 try {
-                    if (previousRecords.get(sensor).isEmpty()) {
+                    if (previousRecords.get(sensor) == null) {
                         temp.get(sensor).add(records.get(sensor).get(0));
-                    } else {
+                    } else if (previousRecords.get(sensor).isEmpty()) {
+                        temp.get(sensor).add(records.get(sensor).get(0));
+                    }else{
                         int size = previousRecords.get(sensor).size();
                         if (!records.get(sensor).get(0).getHora().equals(previousRecords.get(sensor).get(size - 1).getHora()))
                             temp.get(sensor).add(records.get(sensor).get(0));
@@ -283,10 +285,13 @@ public class MQTTToMySQL {
     }
 
     private void insertLastRecords() {
-        previousRecords.clear();
+        //previousRecords.clear(); // cant clear otherwise we lose past records
         for (String s : sensors)
-            if (!records.get(s).isEmpty())
-                previousRecords.put(s, records.get(s));
+            if (!records.get(s).isEmpty()) {
+                System.out.println("Previous antes: " + previousRecords.get(s));
+                previousRecords.put(s, (ArrayList<Record>) records.get(s).clone());
+                System.out.println("Previous depois: " + previousRecords.get(s));
+            }
     }
 
     public static void main(String[] args) {

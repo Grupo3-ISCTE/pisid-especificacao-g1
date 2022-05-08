@@ -125,7 +125,7 @@ public class MongoToMySQL {
                 Record m = new Record(r);
                 this.records.get(m.getSensor()).add(m);
                 c.updateOne(r, new BasicDBObject().append("$inc", new BasicDBObject().append("Migrado", 1)));
-                // System.out.println(r); // AQUI
+                System.out.println(r); // AQUI
             }
         }
     }
@@ -143,23 +143,28 @@ public class MongoToMySQL {
         Map<String, ArrayList<Record>> temp = new HashMap<>();
         for (String sensor : sensors) {
             temp.put(sensor, new ArrayList<>());
-            if (!records.get(sensor).isEmpty()) {
-                try {
-                    if (previousRecords.get(sensor).isEmpty()) {
-                        temp.get(sensor).add(records.get(sensor).get(0));
-                    } else {
-                        int size = previousRecords.get(sensor).size();
-                        if (!records.get(sensor).get(0).getHora().equals(previousRecords.get(sensor).get(size - 1).getHora()))
+
+                if (!records.get(sensor).isEmpty()) {
+                    try {
+                        if (previousRecords.get(sensor) == null) {
                             temp.get(sensor).add(records.get(sensor).get(0));
+                        } else if (previousRecords.get(sensor).isEmpty()) {
+                            temp.get(sensor).add(records.get(sensor).get(0));
+                        }else{
+
+                            int size = previousRecords.get(sensor).size();
+                            if (!records.get(sensor).get(0).getHora().equals(previousRecords.get(sensor).get(size - 1).getHora()))
+                                temp.get(sensor).add(records.get(sensor).get(0));
+                        }
+                        for (int i = 1; i < records.get(sensor).size(); i++) {
+                            if (!records.get(sensor).get(i).getHora().equals(records.get(sensor).get(i - 1).getHora()))
+                                temp.get(sensor).add(records.get(sensor).get(i));
+                        }
+                    } catch (Exception e) {
+                        e.printStackTrace();
                     }
-                    for (int i = 1; i < records.get(sensor).size(); i++) {
-                        if (!records.get(sensor).get(i).getHora().equals(records.get(sensor).get(i - 1).getHora()))
-                            temp.get(sensor).add(records.get(sensor).get(i));
-                    }
-                } catch (Exception e) {
-                    e.printStackTrace();
                 }
-            }
+
         }
         records = temp;
     }
@@ -262,10 +267,13 @@ public class MongoToMySQL {
     }
 
     private void insertLastRecords() {
-        previousRecords.clear();
+        //previousRecords.clear(); // cant clear otherwise we lose past records
         for (String s : sensors)
-            if (!records.get(s).isEmpty())
-                previousRecords.put(s, records.get(s));
+            if (!records.get(s).isEmpty()) {
+                System.out.println("Previous antes: " + previousRecords.get(s));
+                previousRecords.put(s, (ArrayList<Record>) records.get(s).clone());
+                System.out.println("Previous depois: " + previousRecords.get(s));
+            }
     }
 
     public void sendRecordsToMySQL() throws SQLException {
@@ -277,10 +285,10 @@ public class MongoToMySQL {
                         m.getLeitura()
                         + ")";
                 sql_connection_to.prepareStatement(query).execute();
-                // System.out.println("MySQL query: " + query);
+                System.out.println("MySQL query: " + query);
             }
         }
-        System.out.println();
+        // System.out.println();
     }
 
     public static void main(String args[]) {
