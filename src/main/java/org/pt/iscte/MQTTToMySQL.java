@@ -1,5 +1,6 @@
 package org.pt.iscte;
 
+import org.apache.commons.lang3.time.DateUtils;
 import org.bson.Document;
 import org.eclipse.paho.client.mqttv3.*;
 import org.ini4j.Ini;
@@ -32,7 +33,6 @@ public class MQTTToMySQL {
     private final String sql_database_user_to;
     private final String sql_database_password_to;
     private Connection sql_connection_to;
-    private int sql_grey_alert_delay;
     private int max_number_of_recs_to_use_past_recs;
 
     private final String[] sensors;
@@ -56,7 +56,6 @@ public class MQTTToMySQL {
         sql_database_connection_to = ini.get(MYSQL_DESTINATION, "sql_database_connection_to");
         sql_database_user_to = ini.get(MYSQL_DESTINATION, "sql_database_user_to");
         sql_database_password_to = ini.get(MYSQL_DESTINATION, "sql_database_password_to");
-        sql_grey_alert_delay = Integer.parseInt(ini.get(MYSQL_DESTINATION, "sql_grey_alert_delay"));
 
         sensors = ini.get("Mongo Origin", "mongo_sensores_from").toString().split(",");
         max_number_of_recs_to_use_past_recs = Integer.parseInt(ini.get("Java", "max_number_of_recs_to_use_past_recs"));
@@ -103,7 +102,7 @@ public class MQTTToMySQL {
                         removeDuplicatedDates();
                         removeOutliers(); // remover antes tmb porque 0 -1 -1 -1 -1 14 14 14 14 14 -1 -1 -1 -1 (H1)
                         removeAnomalousValues();
-                        sendGreyAlerts();
+                        generateAlerts();
                         removeOutliers();
                         insertLastRecords();
                         sendRecordsToMySQL();
@@ -192,41 +191,81 @@ public class MQTTToMySQL {
         }
     }
 
-    public void sendGreyAlerts() throws SQLException {
-        for (Record r : recordsForGreyAlerts) {
-            Statement statement = sql_connection_to.createStatement();
-            ResultSet rs = statement.executeQuery(
-                    "SELECT IDCultura, IDUtilizador, NomeCultura FROM cultura WHERE IDZona = "
-                            + r.getZona().split("Z")[1] + " AND Estado = 'A'");
-            while (rs.next()) {
-                ResultSet last = statement.executeQuery(
-                        "SELECT DataHoraEscrita FROM alerta WHERE IDAlerta = (SELECT max(IDAlerta) FROM alerta WHERE IDZona = "
-                                + r.getZona().split("Z")[1] + " AND Sensor = '" + r.getSensor() + "'"
-                                + " AND TipoAlerta = 'C' ) AND IDZona = "
-                                + r.getZona().split("Z")[1] + " AND Sensor = '" + r.getSensor() + "'"
-                                + " AND TipoAlerta = 'C' ");
+    public void generateAlerts() throws SQLException {
+        for (ArrayList<Record> listOfRecords : records.values()) {
+            for (Record r : listOfRecords) {
+                Statement statement = sql_connection_to.createStatement();
+                ResultSet rs = sql_connection_to.createStatement()
+                        .executeQuery("SELECT IDCultura,NomeCultura,IDUtilizador,Estado FROM Cultura WHERE IDZona = "
+                                + r.getZona().charAt(1));
+                while (rs.next()) {
+                    String estado = rs.getString(4);
+                    if (estado.equals("A")) {
+                        String IDCultura = rs.getString(1);
+                        String NomeCultura = rs.getString(2);
+                        String IDUtilizador = rs.getString(3);
+                        ResultSet min_max_lim = null;
+                        switch (r.getSensor().charAt(0)) {
+                            case 'T':
+                                min_max_lim = statement.executeQuery(
+                                        "SELECT TemperaturaMin, TemperaturaMax, TemperaturaLim from ParametroCultura where IDCultura = "
+                                                + IDCultura);
+                                break;
+                            case 'H':
+                                min_max_lim = statement.executeQuery(
+                                        "SELECT HumidadeMin, HumidadeMax, HumidadeLim from ParametroCultura where IDCultura = "
+                                                + IDCultura);
+                                break;
+                            case 'L':
+                                min_max_lim = statement.executeQuery(
+                                        "SELECT Luzmin, LuzMax, LuzLim from ParametroCultura where IDCultura = "
+                                                + IDCultura);
+                                break;
+                        }
+                        while (min_max_lim.next()) {
+                            double leitura = r.getLeitura();
+                            double min = min_max_lim.getDouble(1);
+                            double max = min_max_lim.getDouble(2);
+                            double lim = min_max_lim.getDouble(3);
 
-                if (!last.next() || new Timestamp(System.currentTimeMillis()).getTime() > (last.getTimestamp(1)
-                        .getTime() + TimeUnit.MINUTES.toMillis(sql_grey_alert_delay))) {
-                    String query = "INSERT INTO Alerta(IDZona, IDCultura, IDUtilizador, NomeCultura, Sensor, Leitura, DataHora, DataHoraEscrita, TipoAlerta, Mensagem) VALUES("
-                            + r.getZona().split("Z")[1] + ", "
-                            + rs.getString(1) + ", '"
-                            + rs.getString(2) + "', '"
-                            + rs.getString(3) + "', '"
-                            + r.getSensor() + "', "
-                            + r.getLeitura() + ", '"
-                            + r.getHora() + "', '"
-                            + new Timestamp(System.currentTimeMillis()) + "', '"
-                            + "C" + "', '"
-                            + "Potencial avaria detetada no sensor " + r.getSensor() + " da Zona "
-                            + r.getZona().split("Z")[1] + " onde se encontra(m) a(s) sua(s) cultura(s)." + "')";
-                    sql_connection_to.prepareStatement(query).execute();
-                    System.out.println("Grey Alert: " + query);
+                            String tipoAlerta = "";
+                            String mensagem = "";
+
+                            if ((leitura >= (max - lim) && leitura < (max - 0.5 * lim))
+                                    || (leitura > (min + lim * 0.5) && leitura <= (min + lim))) {
+                                tipoAlerta = "A";
+                                mensagem = "[ALERTA Amarelo]";
+                            } else if ((leitura >= max - 0.5 * lim && leitura < max)
+                                    || (leitura > min && leitura <= min + 0.5 * lim)) {
+                                tipoAlerta = "L";
+                                mensagem = "[ALERTA Laranja]";
+                            } else if (leitura <= min || leitura >= max) {
+                                tipoAlerta = "V";
+                                mensagem = "[ALERTA Vermelho]";
+                            }
+
+                            if (tipoAlerta != "") {
+                                String query = "INSERT INTO Alerta(IDUtilizador ,IDCultura ,IDZona,IDSensor,DataHora,Leitura,TipoAlerta,NomeCultura,Mensagem,DataHoraEscrita) "
+                                        +
+                                        "VALUES('" + IDUtilizador + "'," + IDCultura + "," + r.getZona().charAt(1)
+                                        + ",'"
+                                        + r.getSensor() + "','" + r.getHora() + "'," + r.getLeitura() +
+                                        ",'" + tipoAlerta + "','" + NomeCultura + "','" + mensagem + "','"
+                                        + new Timestamp(DateUtils
+                                        .round(new Timestamp(System.currentTimeMillis()), Calendar.SECOND)
+                                        .getTime() + 1000)
+                                        + "')";
+                                sql_connection_to.prepareStatement(query).execute();
+                                System.out.println("Alert Query: " + query);
+                            }
+                        }
+                    }
                 }
             }
         }
-        recordsForGreyAlerts.clear();
+
     }
+
 
     public void removeOutliers() {
         if (!records.isEmpty()) {
