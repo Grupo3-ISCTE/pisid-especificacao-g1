@@ -29,7 +29,7 @@ public class MQTTToMySQL {
     private Connection sql_connection_from;
     private final String sql_select_table_from;
 
-    private final String sql_database_connection_to;
+    private final String sql_database_grupo01_connection_to;
     private final String sql_database_user_to;
     private final String sql_database_password_to;
     private Connection sql_connection_to;
@@ -53,7 +53,7 @@ public class MQTTToMySQL {
         sql_database_password_from = ini.get(MYSQL_ORIGIN, "sql_database_password_from");
         sql_select_table_from = ini.get(MYSQL_ORIGIN, "sql_select_from_table");
 
-        sql_database_connection_to = ini.get(MYSQL_DESTINATION, "sql_database_connection_to");
+        sql_database_grupo01_connection_to = ini.get(MYSQL_DESTINATION, "sql_database_grupo01_connection_to");
         sql_database_user_to = ini.get(MYSQL_DESTINATION, "sql_database_user_to");
         sql_database_password_to = ini.get(MYSQL_DESTINATION, "sql_database_password_to");
 
@@ -85,7 +85,7 @@ public class MQTTToMySQL {
     }
 
     public void connectToMySql() throws SQLException {
-        sql_connection_to = DriverManager.getConnection(sql_database_connection_to, sql_database_user_to,
+        sql_connection_to = DriverManager.getConnection(sql_database_grupo01_connection_to, sql_database_user_to,
                 sql_database_password_to);
     }
 

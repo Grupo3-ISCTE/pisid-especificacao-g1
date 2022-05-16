@@ -6,6 +6,7 @@ import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
 import org.bson.Document;
 import org.ini4j.Ini;
+
 import java.io.File;
 import java.io.IOException;
 import java.util.*;
@@ -16,7 +17,7 @@ public class MongoToMongo {
     private static final String MONGO_DESTINATION = "Mongo Destination";
 
     private final Map<String, MongoCollection<Document>> collections = new HashMap<>();
-    private String[] sensors;
+    private final String[] sensors;
 
     private final String mongo_address_from;
     private final int mongo_port_from;
@@ -26,8 +27,13 @@ public class MongoToMongo {
     private final String mongo_database_name_from;
     private final String mongo_collection_name_from;
 
-    private final String mongo_address_to;
-    private final int mongo_port_to;
+    private final String mongo_address1_to;
+    private final int mongo_port1_to;
+    private final String mongo_address2_to;
+    private final int mongo_port2_to;
+    private final String mongo_address3_to;
+    private final int mongo_port3_to;
+
     private final String mongo_database_name_to;
     private final String mongo_user_to;
     private final char[] mongo_password_to;
@@ -45,8 +51,13 @@ public class MongoToMongo {
         mongo_database_name_from = ini.get(MONGO_ORIGIN, "mongo_database_from");
         mongo_collection_name_from = ini.get(MONGO_ORIGIN, "mongo_collection_from");
 
-        mongo_address_to = ini.get(MONGO_DESTINATION, "mongo_address_to");
-        mongo_port_to = Integer.parseInt(ini.get(MONGO_DESTINATION, "mongo_port_to"));
+        mongo_address1_to = ini.get(MONGO_DESTINATION, "mongo_address1_to");
+        mongo_port1_to = Integer.parseInt(ini.get(MONGO_DESTINATION, "mongo_port1_to"));
+        mongo_address2_to = ini.get(MONGO_DESTINATION, "mongo_address2_to");
+        mongo_port2_to = Integer.parseInt(ini.get(MONGO_DESTINATION, "mongo_port2_to"));
+        mongo_address3_to = ini.get(MONGO_DESTINATION, "mongo_address3_to");
+        mongo_port3_to = Integer.parseInt(ini.get(MONGO_DESTINATION, "mongo_port3_to"));
+
         mongo_database_name_to = ini.get(MONGO_DESTINATION, "mongo_database_to");
         mongo_user_to = ini.get(MONGO_DESTINATION, "mongo_user_to");
         mongo_password_to = ini.get(MONGO_DESTINATION, "mongo_password_to").toCharArray();
@@ -66,10 +77,13 @@ public class MongoToMongo {
     }
 
     public void connectToMongo() {
-        MongoClient mongo_client_to = new MongoClient(new ServerAddress(mongo_address_to, mongo_port_to), List
-                .of(MongoCredential.createCredential(mongo_user_to, mongo_credential_database_to, mongo_password_to)));
+        List<ServerAddress> seeds = Arrays.asList(new ServerAddress(mongo_address1_to,mongo_port1_to),
+                new ServerAddress(mongo_address2_to,mongo_port2_to),
+                new ServerAddress(mongo_address3_to,mongo_port3_to));
+        List<MongoCredential> credentialList = Arrays.asList(
+                MongoCredential.createCredential(mongo_user_to, mongo_credential_database_to, mongo_password_to));
+        MongoClient mongo_client_to = new MongoClient(seeds, credentialList);
         mongo_database_to = mongo_client_to.getDatabase(mongo_database_name_to);
-
     }
 
     public void createAndGetCollections() {

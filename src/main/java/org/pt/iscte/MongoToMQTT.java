@@ -13,6 +13,7 @@ import org.ini4j.Ini;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.sql.Timestamp;
 import java.util.concurrent.TimeUnit;
@@ -31,8 +32,13 @@ public class MongoToMQTT {
     private final String[] sensors;
     private final int past_minutes_for_mongo_search;
 
-    private final String mongo_address_to;
-    private final int mongo_port_to;
+    private final String mongo_address1_to;
+    private final int mongo_port1_to;
+    private final String mongo_address2_to;
+    private final int mongo_port2_to;
+    private final String mongo_address3_to;
+    private final int mongo_port3_to;
+
     private final String mongo_database_name_to;
     private final String mongo_user_to;
     private final char[] mongo_password_to;
@@ -46,8 +52,13 @@ public class MongoToMQTT {
     private final int cloud_qos_from;
 
     public MongoToMQTT(Ini ini) {
-        mongo_address_to = ini.get(MONGO_DESTINATION, "mongo_address_to");
-        mongo_port_to = Integer.parseInt(ini.get(MONGO_DESTINATION, "mongo_port_to"));
+        mongo_address1_to = ini.get(MONGO_DESTINATION, "mongo_address1_to");
+        mongo_port1_to = Integer.parseInt(ini.get(MONGO_DESTINATION, "mongo_port1_to"));
+        mongo_address2_to = ini.get(MONGO_DESTINATION, "mongo_address2_to");
+        mongo_port2_to = Integer.parseInt(ini.get(MONGO_DESTINATION, "mongo_port2_to"));
+        mongo_address3_to = ini.get(MONGO_DESTINATION, "mongo_address3_to");
+        mongo_port3_to = Integer.parseInt(ini.get(MONGO_DESTINATION, "mongo_port3_to"));
+
         mongo_database_name_to = ini.get(MONGO_DESTINATION, "mongo_database_to");
         mongo_user_to = ini.get(MONGO_DESTINATION, "mongo_user_to");
         mongo_password_to = ini.get(MONGO_DESTINATION, "mongo_password_to").toCharArray();
@@ -63,8 +74,12 @@ public class MongoToMQTT {
     }
 
     public void connectToMongo() {
-        MongoClient mongo_client_to = new MongoClient(new ServerAddress(mongo_address_to, mongo_port_to), List
-                .of(MongoCredential.createCredential(mongo_user_to, mongo_credential_database_to, mongo_password_to)));
+        List<ServerAddress> seeds = Arrays.asList(new ServerAddress(mongo_address1_to,mongo_port1_to),
+                new ServerAddress(mongo_address2_to,mongo_port2_to),
+                new ServerAddress(mongo_address3_to,mongo_port3_to));
+        List<MongoCredential> credentialList = Arrays.asList(
+                MongoCredential.createCredential(mongo_user_to, mongo_credential_database_to, mongo_password_to));
+        MongoClient mongo_client_to = new MongoClient(seeds, credentialList);
         mongo_database_to = mongo_client_to.getDatabase(mongo_database_name_to);
     }
 

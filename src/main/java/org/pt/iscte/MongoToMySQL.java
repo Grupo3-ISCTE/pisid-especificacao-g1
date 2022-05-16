@@ -24,8 +24,13 @@ public class MongoToMySQL {
     private static final String MYSQL_ORIGIN = "Mysql Origin";
     private static final String MYSQL_DESTINATION = "Mysql Destination";
 
-    private final String mongo_address_to;
-    private final int mongo_port_to;
+    private final String mongo_address1_to;
+    private final int mongo_port1_to;
+    private final String mongo_address2_to;
+    private final int mongo_port2_to;
+    private final String mongo_address3_to;
+    private final int mongo_port3_to;
+
     private final String mongo_database_name_to;
     private final String mongo_user_to;
     private final char[] mongo_password_to;
@@ -54,8 +59,13 @@ public class MongoToMySQL {
     private List<Record> recordsForGreyAlerts = new ArrayList<>();
 
     public MongoToMySQL(Ini ini) {
-        mongo_address_to = ini.get(MONGO_DESTINATION, "mongo_address_to");
-        mongo_port_to = Integer.parseInt(ini.get(MONGO_DESTINATION, "mongo_port_to"));
+        mongo_address1_to = ini.get(MONGO_DESTINATION, "mongo_address1_to");
+        mongo_port1_to = Integer.parseInt(ini.get(MONGO_DESTINATION, "mongo_port1_to"));
+        mongo_address2_to = ini.get(MONGO_DESTINATION, "mongo_address2_to");
+        mongo_port2_to = Integer.parseInt(ini.get(MONGO_DESTINATION, "mongo_port2_to"));
+        mongo_address3_to = ini.get(MONGO_DESTINATION, "mongo_address3_to");
+        mongo_port3_to = Integer.parseInt(ini.get(MONGO_DESTINATION, "mongo_port3_to"));
+
         mongo_database_name_to = ini.get(MONGO_DESTINATION, "mongo_database_to");
         mongo_user_to = ini.get(MONGO_DESTINATION, "mongo_user_to");
         mongo_password_to = ini.get(MONGO_DESTINATION, "mongo_password_to").toCharArray();
@@ -82,10 +92,13 @@ public class MongoToMySQL {
     }
 
     public void connectToMongo() {
-        MongoClient mongo_client_to = new MongoClient(new ServerAddress(mongo_address_to, mongo_port_to), List
-                .of(MongoCredential.createCredential(mongo_user_to, mongo_credential_database_to, mongo_password_to)));
+        List<ServerAddress> seeds = Arrays.asList(new ServerAddress(mongo_address1_to,mongo_port1_to),
+                new ServerAddress(mongo_address2_to,mongo_port2_to),
+                new ServerAddress(mongo_address3_to,mongo_port3_to));
+        List<MongoCredential> credentialList = Arrays.asList(
+                MongoCredential.createCredential(mongo_user_to, mongo_credential_database_to, mongo_password_to));
+        MongoClient mongo_client_to = new MongoClient(seeds, credentialList);
         mongo_database_to = mongo_client_to.getDatabase(mongo_database_name_to);
-
     }
 
     public void connectFromMySql() throws SQLException {
