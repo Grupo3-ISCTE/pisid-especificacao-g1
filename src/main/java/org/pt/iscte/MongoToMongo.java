@@ -88,14 +88,24 @@ public class MongoToMongo {
 
     public void createAndGetCollections() {
         for (String s : sensors) {
-            try {
-                mongo_database_to.createCollection("sensor" + s.toLowerCase());
-            } catch (Exception e) {
-                // System.out.println("Collection already created");
+            String collection_name = "sensor" + s.toLowerCase();
+            if(!isCollectionCreated(collection_name, mongo_database_to)) {
+                try {
+                    mongo_database_to.createCollection(collection_name);
+                } catch (Exception e) {
+                    // System.out.println("Collection already created");
+                }
+                collections.put("sensor" + s.toLowerCase(), mongo_database_to.getCollection(collection_name));
             }
-            collections.put("sensor" + s.toLowerCase(), mongo_database_to.getCollection("sensor" + s.toLowerCase()));
         }
     }
+
+        private boolean isCollectionCreated(String collection_name, MongoDatabase mongo_database) {
+            for(String a : mongo_database_to.listCollectionNames())
+                if(collection_name.equals(a))
+                    return true;
+            return false;
+        }
 
     public void findAndInsertLastRecords() {
         FindIterable<Document> records = mongo_collection_from.find().sort(new Document("_id", -1)).limit(sensors.length);
