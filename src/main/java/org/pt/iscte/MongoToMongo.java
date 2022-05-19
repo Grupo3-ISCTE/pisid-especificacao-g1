@@ -89,18 +89,18 @@ public class MongoToMongo {
     public void createAndGetCollections() {
         for (String s : sensors) {
             String collection_name = "sensor" + s.toLowerCase();
-            if(!isCollectionCreated(collection_name, mongo_database_to)) {
+            if(!isCollectionCreated(collection_name)) {
                 try {
                     mongo_database_to.createCollection(collection_name);
                 } catch (Exception e) {
                     // System.out.println("Collection already created");
                 }
-                collections.put("sensor" + s.toLowerCase(), mongo_database_to.getCollection(collection_name));
             }
+            collections.put("sensor" + s.toLowerCase(), mongo_database_to.getCollection(collection_name));
         }
     }
 
-        private boolean isCollectionCreated(String collection_name, MongoDatabase mongo_database) {
+        private boolean isCollectionCreated(String collection_name) {
             for(String a : mongo_database_to.listCollectionNames())
                 if(collection_name.equals(a))
                     return true;
@@ -113,6 +113,7 @@ public class MongoToMongo {
             for (Document r : records) {
                 r.append("Migrado", 0);
                 String collectionName = "sensor" + r.get("Sensor").toString().toLowerCase();
+                System.out.println(collectionName);
                 collections.get(collectionName).insertOne(r);
                 System.out.println(r);
             }
